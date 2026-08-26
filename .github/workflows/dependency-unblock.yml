@@ -1,0 +1,66 @@
+name: Dependency Unblock
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  unblock:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unblock dependent issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const mergedBranch = context.payload.pull_request.head.ref;
+            const prNumber = context.payload.pull_request.number;
+
+            // Find issues labeled status:blocked-dependency
+            const blockedIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'status:blocked-dependency',
+              state: 'open',
+            });
+
+            for (const issue of blockedIssues.data) {
+              const body = issue.body || '';
+              // Check if this issue references the merged PR or branch
+              const referencesThis =
+                body.includes(`#${prNumber}`) ||
+                body.includes(mergedBranch);
+
+              if (referencesThis) {
+                // Remove blocked-dependency label
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    name: 'status:blocked-dependency',
+                  });
+                } catch (e) {
+                  // Label might not exist
+                }
+
+                // Add ready label
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: ['status:ready'],
+                });
+
+                // Comment on the issue
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: `Dependency resolved: PR #${prNumber} (branch \`${mergedBranch}\`) has been merged. This issue is now ready for work.`,
+                });
+              }
+            }

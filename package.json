@@ -1,0 +1,33 @@
+{
+  "name": "agent-office",
+  "version": "0.1.0",
+  "description": "Agent-driven software development as a managed virtual office",
+  "type": "module",
+  "bin": {
+    "office": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "npx eslint src/ --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "format": "npx prettier --write src/",
+    "format:check": "npx prettier --check src/",
+    "office": "node --loader ts-node/esm src/cli.ts"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.0.0",
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

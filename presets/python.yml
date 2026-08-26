@@ -1,0 +1,9 @@
+quality_gates:
+  test:
+    command: "pytest"
+  lint:
+    command: "ruff check ."
+  typecheck:
+    command: "mypy ."
+  format_check:
+    command: "ruff format --check ."

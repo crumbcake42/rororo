@@ -1,0 +1,51 @@
+name: Human Unblock
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  unblock:
+    runs-on: ubuntu-latest
+    if: contains(toJSON(github.event.issue.labels), 'status:blocked-human')
+
+    steps:
+      - name: Unblock on human response
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const comment = context.payload.comment;
+
+            // Only trigger on comments from non-bots
+            if (comment.user.type === 'Bot') {
+              return;
+            }
+
+            // Remove blocked-human label
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: 'status:blocked-human',
+              });
+            } catch (e) {
+              // Label might not exist
+            }
+
+            // Add ready label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: ['status:ready'],
+            });
+
+            // Comment confirming unblock
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: `Human response received from @${comment.user.login}. Issue moved to \`status:ready\` and will be picked up on the next dispatch cycle.`,
+            });

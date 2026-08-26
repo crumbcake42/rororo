@@ -1,0 +1,32 @@
+# Pipeline: Backend Feature
+# A new backend feature or capability.
+
+name: backend-feature
+description: "New backend feature — full design-through-security pipeline"
+
+steps:
+  - role: architect
+    description: "Design the feature and document decisions"
+    outputs:
+      - DECISIONS.md
+      - ARCHITECTURE.md (if system design changes)
+
+  - role: implementer
+    description: "Implement the feature per architect's design"
+    outputs:
+      - Source code within declared scope
+
+  - role: test-writer
+    description: "Write tests against the implementation"
+    outputs:
+      - Test files
+
+  - role: reviewer
+    description: "Review implementation and tests for quality"
+    outputs:
+      - PR review comments
+
+  - role: security-reviewer
+    description: "Audit for vulnerabilities and auth issues"
+    outputs:
+      - Security findings

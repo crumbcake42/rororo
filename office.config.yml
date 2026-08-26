@@ -1,0 +1,120 @@
+# =============================================================================
+# Agent Office Configuration
+# =============================================================================
+# This file controls all toggleable settings for the dispatch system, CI, and
+# agent orchestration. Secrets (API keys, webhook URLs) go in .env, not here.
+# This file IS committed to the repo.
+# =============================================================================
+
+# --- Project Identity --------------------------------------------------------
+# Set this when you fork the template for a new project.
+project_name: ""
+
+# --- Branch Strategy ---------------------------------------------------------
+# "tiered" — feature branches → dev → staging → main (safer, more ceremony)
+# "simple" — feature branches → main (less ceremony, good for early-stage work)
+#
+# In tiered mode, agent worktrees branch from dev and PRs target dev.
+# Separate promotion workflows handle dev → staging → main.
+# In simple mode, everything branches from and targets main.
+branch_strategy: tiered
+
+# --- Dispatch Mode -----------------------------------------------------------
+# "manual" — you run `office dispatch` to send work to agents
+# "daemon" — background process auto-dispatches ready tasks until queue is
+#            empty or a human-block fires. Respects pause/resume toggle.
+dispatch_mode: manual
+
+# --- Notification Mode -------------------------------------------------------
+# "watch" — blocking questions print to terminal, dispatch waits for response
+# "afk"   — blocking questions fire a webhook to Slack or SMS, user responds
+#            on the GitHub Issue, a GitHub Action picks up the response
+#
+# Both modes converge on the same response path: GitHub Issue comments.
+notification_mode: watch
+
+# AFK notification targets. Actual secrets go in .env (see .env.example).
+afk:
+  slack_webhook_url: "${SLACK_WEBHOOK_URL}"
+  twilio_sid: "${TWILIO_SID}"
+  twilio_token: "${TWILIO_TOKEN}"
+  twilio_from: "${TWILIO_FROM}"
+  twilio_to: "${TWILIO_TO}"
+
+# --- Model Routing -----------------------------------------------------------
+# Which Claude model to use for each tier.
+# Opus: PM, architect, security-reviewer (judgment-critical roles)
+# Sonnet: implementer, test-writer, reviewer, ux-engineer (throughput roles)
+models:
+  opus: "claude-opus-4-6"
+  sonnet: "claude-sonnet-4-6"
+
+# Role-to-model mapping. Override individual roles here if needed.
+# Defaults follow the tier assignments above.
+role_models:
+  pm: opus
+  architect: opus
+  implementer: sonnet
+  test-writer: sonnet
+  reviewer: sonnet
+  ux-engineer: sonnet
+  security-reviewer: opus
+
+# --- Quality Gates -----------------------------------------------------------
+# Named commands that CI and the dispatch script invoke.
+# Apply a preset (`office preset typescript-node`) or fill in manually.
+# All gates must pass before a PR can merge.
+quality_gates:
+  test:
+    description: "Run the test suite"
+    command: ""         # e.g. "npm test" or "pytest"
+  lint:
+    description: "Run the linter"
+    command: ""         # e.g. "npx eslint . --max-warnings 0" or "ruff check ."
+  typecheck:
+    description: "Run type checking"
+    command: ""         # e.g. "npx tsc --noEmit" or "mypy ."
+  format_check:
+    description: "Verify code formatting"
+    command: ""         # e.g. "npx prettier --check ." or "ruff format --check ."
+
+# --- Adversarial Review ------------------------------------------------------
+# Controls for the architecture-decision pipeline's debate format.
+adversarial:
+  # Maximum debate rounds. No early exit on convergence — wrong-consensus
+  # convergence (~24% of disputed questions in research) is the failure mode
+  # we guard against. Always runs to cap or PM judge cuts it.
+  max_rounds: 3
+
+  # Opposing directives given to the two architect instances.
+  # Customize these per-project if the relevant tension is different
+  # (e.g., "performance vs. readability" or "build vs. buy").
+  architect_directives:
+    - >
+      Argue for the simplest viable solution. Minimize abstraction layers,
+      moving parts, and future flexibility that isn't needed today. Challenge
+      any complexity that cannot be justified by a current, concrete requirement.
+    - >
+      Argue for the most extensible solution. Prioritize clean interfaces,
+      separation of concerns, and the ability to evolve without rewrites.
+      Challenge any shortcut that creates future technical debt.
+
+# --- Standup -----------------------------------------------------------------
+# Controls what the standup report includes.
+standup:
+  include_completed: true       # tasks done since last standup
+  include_in_progress: true     # tasks currently being worked
+  include_blocked: true         # blocked tasks with reasons
+  include_recent_commits: true  # recent commit activity
+  include_pm_flags: true        # anything the PM agent wants to surface
+
+# --- Worktrees ---------------------------------------------------------------
+# Where agent worktrees are created. This directory is .gitignore'd.
+worktree_dir: ".worktrees"
+
+# --- Pipelines ---------------------------------------------------------------
+# Pipeline definitions live in pipelines/*.yml. This section controls defaults.
+pipelines:
+  # Default pipeline if an issue has no pipeline label.
+  # Set to null to require explicit pipeline assignment (recommended).
+  default: null

@@ -1,0 +1,27 @@
+# Pipeline: Refactor
+# Restructure existing code without changing behavior.
+
+name: refactor
+description: "Refactor — design, implement, test, review"
+
+steps:
+  - role: architect
+    description: "Design the refactoring approach and document decisions"
+    outputs:
+      - DECISIONS.md
+      - ARCHITECTURE.md (if structure changes)
+
+  - role: implementer
+    description: "Execute the refactoring"
+    outputs:
+      - Refactored source code within declared scope
+
+  - role: test-writer
+    description: "Verify existing behavior is preserved and add coverage"
+    outputs:
+      - Test files
+
+  - role: reviewer
+    description: "Review the refactoring for correctness and quality"
+    outputs:
+      - PR review comments

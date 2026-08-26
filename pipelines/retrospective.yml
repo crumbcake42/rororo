@@ -1,0 +1,19 @@
+# Pipeline: Retrospective
+# PM produces data-driven observations from quantitative project metrics.
+
+name: retrospective
+description: "Retrospective — quantitative analysis, not soft reflections"
+
+steps:
+  - role: pm
+    description: "Read quantitative project metrics and produce data-driven questions for the user"
+    inputs:
+      - Blocked rates by category (human, dependency, unclassified)
+      - Review round counts per task
+      - Merge conflict frequency
+      - Rework rates (review rejection count by agent role)
+      - Average time from ready to done per pipeline type
+      - Token cost per pipeline type (if tracked)
+    outputs:
+      - Questions grounded in specific metrics
+      - NOT soft process reflections

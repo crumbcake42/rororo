@@ -1,0 +1,45 @@
+# Pipeline: Fullstack Feature
+# A feature spanning both backend and frontend.
+
+name: fullstack-feature
+description: "Fullstack feature — backend, frontend, UX, and security"
+
+steps:
+  - role: architect
+    description: "Design the feature and document decisions"
+    outputs:
+      - DECISIONS.md
+      - ARCHITECTURE.md (if system design changes)
+
+  - role: implementer
+    variant: backend
+    description: "Implement the backend components"
+    outputs:
+      - Backend source code within declared scope
+
+  - role: implementer
+    variant: frontend
+    description: "Implement the frontend components"
+    outputs:
+      - Frontend source code within declared scope
+
+  - role: ux-engineer
+    mode: build
+    description: "Build and refine the frontend UI"
+    outputs:
+      - Frontend source code
+
+  - role: test-writer
+    description: "Write tests against both backend and frontend"
+    outputs:
+      - Test files
+
+  - role: reviewer
+    description: "Review full implementation and tests for quality"
+    outputs:
+      - PR review comments
+
+  - role: security-reviewer
+    description: "Audit for vulnerabilities across the full stack"
+    outputs:
+      - Security findings

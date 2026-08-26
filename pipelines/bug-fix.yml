@@ -1,0 +1,21 @@
+# Pipeline: Bug Fix
+# Fix a reported bug.
+
+name: bug-fix
+description: "Bug fix — implement, test, review"
+
+steps:
+  - role: implementer
+    description: "Diagnose and fix the bug"
+    outputs:
+      - Source code fix within declared scope
+
+  - role: test-writer
+    description: "Write regression tests covering the bug"
+    outputs:
+      - Test files
+
+  - role: reviewer
+    description: "Review the fix and tests"
+    outputs:
+      - PR review comments

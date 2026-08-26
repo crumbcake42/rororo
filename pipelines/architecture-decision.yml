@@ -1,0 +1,31 @@
+# Pipeline: Architecture Decision
+# Adversarial debate to reach a design decision.
+
+name: architecture-decision
+description: "Adversarial architecture debate — two architects argue, PM judges, user decides"
+
+adversarial: true
+
+steps:
+  - role: architect
+    instance: A
+    directive_index: 0
+    description: "Argue for the first position (default: simplicity)"
+    rounds: 3
+
+  - role: architect
+    instance: B
+    directive_index: 1
+    description: "Argue for the second position (default: extensibility)"
+    rounds: 3
+
+  - role: pm
+    description: "Judge the debate — synthesize tradeoffs and propose a decision"
+    outputs:
+      - Synthesis comment on GitHub Issue
+
+  - role: user
+    description: "User approves or modifies the proposed decision"
+    blocking: true
+    outputs:
+      - Decision logged in DECISIONS.md

@@ -1,0 +1,9 @@
+quality_gates:
+  test:
+    command: "npm test"
+  lint:
+    command: "npx eslint . --max-warnings 0"
+  typecheck:
+    command: "npx tsc --noEmit"
+  format_check:
+    command: "npx prettier --check ."

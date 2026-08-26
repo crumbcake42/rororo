@@ -1,0 +1,22 @@
+# Pipeline: Planning
+# PM reads project state and proposes prioritized next tasks.
+
+name: planning
+description: "Planning — PM proposes tasks, user approves"
+
+steps:
+  - role: pm
+    description: "Read backlog, decisions, architecture, and recent completions. Produce prioritized task proposals."
+    inputs:
+      - All GitHub Issues (backlog)
+      - DECISIONS.md
+      - ARCHITECTURE.md
+      - Recent closed issues and merged PRs
+    outputs:
+      - Prioritized task proposals with title, description, pipeline, dependencies, and rationale
+
+  - role: user
+    description: "Review, edit, approve, or reject proposed tasks"
+    blocking: true
+    outputs:
+      - Approved tasks created as GitHub Issues with status:ready and pipeline labels

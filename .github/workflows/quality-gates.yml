@@ -1,0 +1,49 @@
+name: Quality Gates
+
+on:
+  pull_request:
+    branches: [main, dev, staging]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Read quality gate commands
+        id: gates
+        run: |
+          # Parse quality gate commands from office.config.yml
+          test_cmd=$(grep -A1 'test:' office.config.yml | grep 'command:' | head -1 | sed 's/.*command: *"\(.*\)"/\1/')
+          lint_cmd=$(grep -A1 'lint:' office.config.yml | grep 'command:' | head -1 | sed 's/.*command: *"\(.*\)"/\1/')
+          typecheck_cmd=$(grep -A1 'typecheck:' office.config.yml | grep 'command:' | head -1 | sed 's/.*command: *"\(.*\)"/\1/')
+          format_cmd=$(grep -A1 'format_check:' office.config.yml | grep 'command:' | head -1 | sed 's/.*command: *"\(.*\)"/\1/')
+
+          echo "test_cmd=$test_cmd" >> "$GITHUB_OUTPUT"
+          echo "lint_cmd=$lint_cmd" >> "$GITHUB_OUTPUT"
+          echo "typecheck_cmd=$typecheck_cmd" >> "$GITHUB_OUTPUT"
+          echo "format_cmd=$format_cmd" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        if: steps.gates.outputs.test_cmd != ''
+        run: ${{ steps.gates.outputs.test_cmd }}
+
+      - name: Lint
+        if: steps.gates.outputs.lint_cmd != ''
+        run: ${{ steps.gates.outputs.lint_cmd }}
+
+      - name: Type Check
+        if: steps.gates.outputs.typecheck_cmd != ''
+        run: ${{ steps.gates.outputs.typecheck_cmd }}
+
+      - name: Format Check
+        if: steps.gates.outputs.format_cmd != ''
+        run: ${{ steps.gates.outputs.format_cmd }}

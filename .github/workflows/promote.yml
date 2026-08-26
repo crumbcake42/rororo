@@ -1,0 +1,35 @@
+name: Branch Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      promotion:
+        description: "Promotion path"
+        required: true
+        type: choice
+        options:
+          - dev-to-staging
+          - staging-to-main
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Promote dev to staging
+        if: inputs.promotion == 'dev-to-staging'
+        run: |
+          git checkout staging
+          git merge dev --no-ff -m "promote: dev → staging"
+          git push origin staging
+
+      - name: Promote staging to main
+        if: inputs.promotion == 'staging-to-main'
+        run: |
+          git checkout main
+          git merge staging --no-ff -m "promote: staging → main"
+          git push origin main

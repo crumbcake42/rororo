@@ -1,0 +1,16 @@
+# Pipeline: Chore
+# Routine maintenance tasks — dependency updates, config changes, cleanup.
+
+name: chore
+description: "Chore — implement and review"
+
+steps:
+  - role: implementer
+    description: "Execute the chore task"
+    outputs:
+      - Source code or config changes within declared scope
+
+  - role: reviewer
+    description: "Review the changes"
+    outputs:
+      - PR review comments

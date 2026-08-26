@@ -1,0 +1,39 @@
+# Pipeline: Frontend Feature
+# A new frontend feature or UI component.
+
+name: frontend-feature
+description: "New frontend feature — design through UX review"
+
+steps:
+  - role: architect
+    description: "Design the feature and document decisions"
+    outputs:
+      - DECISIONS.md
+      - ARCHITECTURE.md (if system design changes)
+
+  - role: implementer
+    description: "Implement backend/data layer if needed"
+    outputs:
+      - Source code within declared scope
+
+  - role: ux-engineer
+    mode: build
+    description: "Implement the frontend UI"
+    outputs:
+      - Frontend source code
+
+  - role: test-writer
+    description: "Write tests against the implementation"
+    outputs:
+      - Test files
+
+  - role: ux-engineer
+    mode: review
+    description: "Review UI for usability, accessibility, and visual quality"
+    outputs:
+      - UX review comments
+
+  - role: reviewer
+    description: "Review implementation and tests for quality"
+    outputs:
+      - PR review comments

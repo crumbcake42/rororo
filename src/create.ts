@@ -7,11 +7,11 @@ import type { OfficeConfig } from "./config.js";
 import { getModelForRole } from "./config.js";
 import { createIssue } from "./github.js";
 
-export function launchCreateSession(
+export async function launchCreateSession(
   config: OfficeConfig,
   projectRoot: string,
   topic?: string
-): void {
+): Promise<void> {
   const topicLine = topic
     ? `The user wants to work on: "${topic}".`
     : "The user hasn't specified a topic yet — ask them what they want to work on.";
@@ -56,8 +56,8 @@ export function launchCreateSession(
   let output: string;
   try {
     const result = execSync(
-      `claude --agent pm --model ${model} --prompt-file "${promptFile}"`,
-      { cwd: projectRoot, stdio: "pipe", timeout: 600_000 }
+      `claude --agent pm --model ${model} --output-format json --prompt-file "${promptFile}"`,
+      { cwd: projectRoot, stdio: ["inherit", "pipe", "inherit"], timeout: 600_000 }
     );
     output = result.toString("utf-8");
   } catch {
@@ -83,13 +83,14 @@ export function launchCreateSession(
   const [, pipeline, title, body] = issueMatch;
   const labels = [`status:backlog`, `pipeline:${pipeline.trim()}`];
 
-  createIssue(title.trim(), body.trim(), labels)
-    .then((issue) => {
-      console.log(`\nIssue created: #${issue.number} — ${issue.title}`);
-      console.log(`Labels: ${labels.join(", ")}`);
-      console.log(`URL: ${issue.html_url}`);
-    })
-    .catch((error: Error) => {
-      console.error(`Failed to create issue: ${error.message}`);
-    });
+  try {
+    const issue = await createIssue(title.trim(), body.trim(), labels);
+    console.log(`\nIssue created: #${issue.number} — ${issue.title}`);
+    console.log(`Labels: ${labels.join(", ")}`);
+    console.log(`URL: ${issue.html_url}`);
+  } catch (error) {
+    console.error(
+      `Failed to create issue: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
 }

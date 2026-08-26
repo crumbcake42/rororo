@@ -41,9 +41,9 @@ program
   .description(
     "Create a new issue through an interactive PM session"
   )
-  .action((topic?: string) => {
+  .action(async (topic?: string) => {
     const config = loadConfig(projectRoot);
-    launchCreateSession(config, projectRoot, topic);
+    await launchCreateSession(config, projectRoot, topic);
   });
 
 program

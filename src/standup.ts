@@ -1,4 +1,8 @@
 import { execSync } from "node:child_process";
+import { writeFileSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { randomBytes } from "node:crypto";
 import type { OfficeConfig } from "./config.js";
 import { getStatus, formatStatus } from "./status.js";
 import { listRecentPRs } from "./github.js";
@@ -112,12 +116,22 @@ export function launchInteractiveStandup(
 ): void {
   const prompt = `You are the PM agent running an interactive standup. Here is the current project state:\n\n${standupData}\n\nThe user will ask questions about the project. Answer from this data. If they ask for details on a specific task, agent, or decision, spawn the relevant role agent as a subagent to provide detailed answers.`;
 
+  const filename = `office-standup-${randomBytes(8).toString("hex")}.md`;
+  const promptFile = join(tmpdir(), filename);
+  writeFileSync(promptFile, prompt, "utf-8");
+
   try {
     execSync(
-      `claude --agent pm --model ${config.models.opus} "${prompt.replace(/"/g, '\\"')}"`,
+      `claude --agent pm --model ${config.models.opus} --prompt-file "${promptFile}"`,
       { cwd: projectRoot, stdio: "inherit" }
     );
   } catch {
     console.error("Interactive standup session ended.");
+  } finally {
+    try {
+      unlinkSync(promptFile);
+    } catch {
+      // Best-effort cleanup
+    }
   }
 }

@@ -1,6 +1,8 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
+import { tmpdir } from "node:os";
+import { randomBytes } from "node:crypto";
 import yaml from "js-yaml";
 import type { OfficeConfig } from "./config.js";
 import { getBaseBranch, getModelForRole } from "./config.js";
@@ -10,6 +12,7 @@ import {
   getIssueComments,
   setLabels,
   addComment,
+  createPR,
   getPipelineLabel,
   type GitHubIssue,
 } from "./github.js";
@@ -115,13 +118,21 @@ function assembleContext(
   return parts.join("\n");
 }
 
+function writeTempPrompt(content: string): string {
+  const filename = `office-prompt-${randomBytes(8).toString("hex")}.md`;
+  const filepath = join(tmpdir(), filename);
+  writeFileSync(filepath, content, "utf-8");
+  return filepath;
+}
+
 function invokeAgent(
   config: OfficeConfig,
   projectRoot: string,
   worktreePath: string,
   step: PipelineStep,
-  contextPrompt: string
-): void {
+  contextPrompt: string,
+  captureOutput = false
+): string {
   const model = getModelForRole(config, step.role);
   const agentFile = resolve(
     projectRoot,
@@ -134,12 +145,15 @@ function invokeAgent(
     throw new Error(`Agent definition not found: ${agentFile}`);
   }
 
+  const promptFile = writeTempPrompt(contextPrompt);
+
   const args = [
     "claude",
     "--agent", step.role,
     "--model", model,
     "--print",
     "--dangerously-skip-permissions",
+    "--prompt-file", `"${promptFile}"`,
   ];
 
   console.log(
@@ -147,18 +161,168 @@ function invokeAgent(
   );
 
   try {
-    execSync(
-      `${args.join(" ")} "${contextPrompt.replace(/"/g, '\\"')}"`,
-      {
-        cwd: worktreePath,
-        stdio: "inherit",
-        timeout: 600_000,
-      }
-    );
+    const result = execSync(args.join(" "), {
+      cwd: worktreePath,
+      stdio: captureOutput ? "pipe" : "inherit",
+      timeout: 600_000,
+    });
+    return captureOutput && result ? result.toString("utf-8") : "";
   } catch (error) {
     throw new Error(
       `Agent ${step.role} failed: ${error instanceof Error ? error.message : String(error)}`
     );
+  } finally {
+    try {
+      unlinkSync(promptFile);
+    } catch {
+      // Best-effort cleanup
+    }
+  }
+}
+
+interface DebateRound {
+  round: number;
+  instanceA: string;
+  instanceB: string;
+}
+
+function formatTranscript(rounds: DebateRound[]): string {
+  const parts: string[] = ["# Adversarial Debate Transcript\n"];
+  for (const r of rounds) {
+    parts.push(`## Round ${r.round}\n`);
+    parts.push(`### Architect A\n\n${r.instanceA}\n`);
+    parts.push(`### Architect B\n\n${r.instanceB}\n`);
+  }
+  return parts.join("\n");
+}
+
+async function runAdversarialDebate(
+  config: OfficeConfig,
+  projectRoot: string,
+  worktreePath: string,
+  issue: GitHubIssue,
+  comments: Array<{ body: string; user: string }>,
+  pipeline: Pipeline
+): Promise<void> {
+  const maxRounds = config.adversarial.max_rounds;
+  const directives = config.adversarial.architect_directives;
+
+  const stepA = pipeline.steps.find((s) => s.instance === "A");
+  const stepB = pipeline.steps.find((s) => s.instance === "B");
+  const pmStep = pipeline.steps.find((s) => s.role === "pm");
+  const userStep = pipeline.steps.find((s) => s.role === "user");
+
+  if (!stepA || !stepB || !pmStep) {
+    throw new Error(
+      "Adversarial pipeline must have instance A, instance B, and a PM step"
+    );
+  }
+
+  const directiveA = directives[stepA.directive_index ?? 0] ?? "";
+  const directiveB = directives[stepB.directive_index ?? 1] ?? "";
+
+  const baseContext = assembleContext(
+    projectRoot,
+    issue,
+    comments,
+    pipeline,
+    0
+  );
+
+  const rounds: DebateRound[] = [];
+
+  for (let round = 1; round <= maxRounds; round++) {
+    console.log(`\n=== Debate Round ${round}/${maxRounds} ===`);
+
+    const priorTranscript =
+      rounds.length > 0 ? formatTranscript(rounds) : "";
+
+    const contextA = [
+      baseContext,
+      `\n## Your Directive\n\n${directiveA}`,
+      `\nYou are Architect A in round ${round} of ${maxRounds}.`,
+      priorTranscript
+        ? `\n## Prior Debate Rounds\n\n${priorTranscript}`
+        : "",
+    ].join("\n");
+
+    console.log(`\n--- Architect A (Round ${round}) ---`);
+    const outputA = invokeAgent(
+      config,
+      projectRoot,
+      worktreePath,
+      stepA,
+      contextA,
+      true
+    );
+
+    const contextB = [
+      baseContext,
+      `\n## Your Directive\n\n${directiveB}`,
+      `\nYou are Architect B in round ${round} of ${maxRounds}.`,
+      priorTranscript
+        ? `\n## Prior Debate Rounds\n\n${priorTranscript}`
+        : "",
+      `\n## Architect A's Argument (Round ${round})\n\n${outputA}`,
+    ].join("\n");
+
+    console.log(`\n--- Architect B (Round ${round}) ---`);
+    const outputB = invokeAgent(
+      config,
+      projectRoot,
+      worktreePath,
+      stepB,
+      contextB,
+      true
+    );
+
+    rounds.push({ round, instanceA: outputA, instanceB: outputB });
+  }
+
+  const transcript = formatTranscript(rounds);
+
+  await addComment(issue.number, transcript);
+  console.log("\nDebate transcript posted to issue.");
+
+  console.log("\n--- PM Judge ---");
+  const pmContext = [
+    baseContext,
+    `\n## Full Debate Transcript\n\n${transcript}`,
+    `\nYou are the PM judge. Synthesize the debate above into a clear recommendation with tradeoffs. Do not pick a winner — identify the best path forward given both perspectives.`,
+  ].join("\n");
+
+  const synthesis = invokeAgent(
+    config,
+    projectRoot,
+    worktreePath,
+    pmStep,
+    pmContext,
+    true
+  );
+
+  await addComment(
+    issue.number,
+    `## PM Synthesis\n\n${synthesis}`
+  );
+  console.log("PM synthesis posted to issue.");
+
+  if (userStep) {
+    await setLabels(
+      issue.number,
+      ["status:blocked-human"],
+      ["status:in-progress"]
+    );
+    await addComment(
+      issue.number,
+      `The adversarial debate is complete and the PM has provided a synthesis above.\n\nPlease review and respond with your decision. This will be logged in DECISIONS.md.`
+    );
+    await notify(config, {
+      issueNumber: issue.number,
+      title: issue.title,
+      message: "Adversarial debate complete — your decision is needed",
+      url: issue.html_url,
+    });
+    console.log("Awaiting user decision.");
   }
 }
 
@@ -219,6 +383,18 @@ export async function dispatchIssue(
   try {
     const comments = await getIssueComments(issue.number);
 
+    if (pipeline.adversarial) {
+      await runAdversarialDebate(
+        config,
+        projectRoot,
+        worktree.path,
+        issue,
+        comments,
+        pipeline
+      );
+      return;
+    }
+
     for (let i = 0; i < pipeline.steps.length; i++) {
       const step = pipeline.steps[i];
 
@@ -264,6 +440,29 @@ export async function dispatchIssue(
         context
       );
     }
+
+    console.log(`\nPushing branch ${branch} to origin...`);
+    execSync(`git push -u origin "${branch}"`, {
+      cwd: worktree.path,
+      stdio: "pipe",
+    });
+
+    const prTitle = `${pipelineName.startsWith("bug") ? "fix" : "feat"}(#${issue.number}): ${issue.title}`;
+    const stepSummary = pipeline.steps
+      .map((s, idx) => `${idx + 1}. **${s.role}** — ${s.description}`)
+      .join("\n");
+    const prBody = [
+      `## Summary`,
+      ``,
+      `Closes #${issue.number}`,
+      ``,
+      `## Pipeline: ${pipeline.name}`,
+      ``,
+      stepSummary,
+    ].join("\n");
+
+    const pr = await createPR(branch, baseBranch, prTitle, prBody);
+    console.log(`PR created: ${pr.html_url}`);
 
     await setLabels(
       issue.number,

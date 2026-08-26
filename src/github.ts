@@ -271,6 +271,35 @@ export async function listRecentPRs(
   }));
 }
 
+export async function createPR(
+  headBranch: string,
+  baseBranch: string,
+  title: string,
+  body: string
+): Promise<GitHubPR> {
+  const octokit = getOctokit();
+  const { owner, repo } = getRepoInfo();
+
+  const { data } = await octokit.rest.pulls.create({
+    owner,
+    repo,
+    title,
+    body,
+    head: headBranch,
+    base: baseBranch,
+  });
+
+  return {
+    number: data.number,
+    title: data.title,
+    head_branch: data.head.ref,
+    base_branch: data.base.ref,
+    state: data.state,
+    merged: data.merged_at !== null,
+    html_url: data.html_url,
+  };
+}
+
 export function getPipelineLabel(issue: GitHubIssue): string | null {
   const pipelineLabel = issue.labels.find((l) =>
     l.startsWith("pipeline:")

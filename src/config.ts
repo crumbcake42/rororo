@@ -39,6 +39,7 @@ export interface OfficeConfig {
     opus: string;
     sonnet: string;
   };
+  role_models: Record<string, string>;
   quality_gates: Record<string, QualityGate>;
   adversarial: AdversarialConfig;
   standup: StandupConfig;
@@ -94,6 +95,7 @@ export function loadConfig(projectRoot?: string): OfficeConfig {
         ((raw.models as Record<string, string>)?.sonnet as string) ??
         "claude-sonnet-4-6",
     },
+    role_models: (raw.role_models as Record<string, string>) ?? {},
     quality_gates: (raw.quality_gates as Record<string, QualityGate>) ?? {},
     adversarial: {
       max_rounds:
@@ -133,6 +135,11 @@ export function getModelForRole(
   config: OfficeConfig,
   role: string
 ): string {
+  const override = config.role_models[role];
+  if (override) {
+    const resolved = config.models[override as keyof typeof config.models];
+    if (resolved) return resolved;
+  }
   const opusRoles = ["pm", "architect", "security-reviewer"];
   return opusRoles.includes(role) ? config.models.opus : config.models.sonnet;
 }

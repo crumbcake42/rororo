@@ -20,17 +20,7 @@ jobs:
 
       - name: Read quality gate commands
         id: gates
-        run: |
-          # Parse quality gate commands from office.config.yml
-          test_cmd=$(grep -A1 'test:' office.config.yml | grep 'command:' | head -1 | sed 's/.*command: *"\(.*\)"/\1/')
-          lint_cmd=$(grep -A1 'lint:' office.config.yml | grep 'command:' | head -1 | sed 's/.*command: *"\(.*\)"/\1/')
-          typecheck_cmd=$(grep -A1 'typecheck:' office.config.yml | grep 'command:' | head -1 | sed 's/.*command: *"\(.*\)"/\1/')
-          format_cmd=$(grep -A1 'format_check:' office.config.yml | grep 'command:' | head -1 | sed 's/.*command: *"\(.*\)"/\1/')
-
-          echo "test_cmd=$test_cmd" >> "$GITHUB_OUTPUT"
-          echo "lint_cmd=$lint_cmd" >> "$GITHUB_OUTPUT"
-          echo "typecheck_cmd=$typecheck_cmd" >> "$GITHUB_OUTPUT"
-          echo "format_cmd=$format_cmd" >> "$GITHUB_OUTPUT"
+        run: node scripts/read-gates.js
 
       - name: Test
         if: steps.gates.outputs.test_cmd != ''

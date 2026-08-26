@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { Octokit } from "@octokit/rest";
 
 export interface GitHubIssue {
@@ -53,7 +54,6 @@ function getRepoInfo(): { owner: string; repo: string } {
 
 function detectRemoteFromGit(): string | null {
   try {
-    const { execSync } = require("node:child_process");
     const url = execSync("git remote get-url origin", {
       encoding: "utf-8",
     }).trim();

@@ -18,6 +18,15 @@ jobs:
           script: |
             const mergedBranch = context.payload.pull_request.head.ref;
             const prNumber = context.payload.pull_request.number;
+            const prBody = context.payload.pull_request.body || '';
+
+            // Extract linked issue numbers from PR body (Closes #N, Fixes #N, Resolves #N)
+            const closesPattern = /(?:closes|fixes|resolves)\s+#(\d+)/gi;
+            const linkedIssues = [];
+            let closesMatch;
+            while ((closesMatch = closesPattern.exec(prBody)) !== null) {
+              linkedIssues.push(parseInt(closesMatch[1], 10));
+            }
 
             // Find issues labeled status:blocked-dependency
             const blockedIssues = await github.rest.issues.listForRepo({
@@ -29,10 +38,11 @@ jobs:
 
             for (const issue of blockedIssues.data) {
               const body = issue.body || '';
-              // Check if this issue references the merged PR or branch
+              // Check if this issue references the merged PR, branch, or a linked issue
               const referencesThis =
                 body.includes(`#${prNumber}`) ||
-                body.includes(mergedBranch);
+                body.includes(mergedBranch) ||
+                linkedIssues.some(n => body.includes(`#${n}`));
 
               if (referencesThis) {
                 // Remove blocked-dependency label

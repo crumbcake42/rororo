@@ -494,5 +494,12 @@ export async function dispatchIssue(
     });
 
     console.error(`\nPipeline failed for #${issue.number}: ${message}`);
+  } finally {
+    try {
+      cleanupWorktree(projectRoot, worktree.path, branch);
+      console.log(`Cleaned up worktree for ${branch}.`);
+    } catch {
+      // Best-effort cleanup
+    }
   }
 }

@@ -3,7 +3,6 @@
 import { Command } from "commander";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import yaml from "js-yaml";
 import { loadConfig } from "./config.js";
 import { dispatchNext } from "./dispatch.js";
 import { getStatus, formatStatus } from "./status.js";
@@ -12,6 +11,7 @@ import {
   launchInteractiveStandup,
 } from "./standup.js";
 import { pause, resume, runDaemon } from "./daemon.js";
+import { launchCreateSession } from "./create.js";
 
 const program = new Command();
 const projectRoot = process.cwd();
@@ -34,6 +34,16 @@ program
         "No tasks ready for dispatch. Create an issue with status:ready to get started."
       );
     }
+  });
+
+program
+  .command("create [topic]")
+  .description(
+    "Create a new issue through an interactive PM session"
+  )
+  .action((topic?: string) => {
+    const config = loadConfig(projectRoot);
+    launchCreateSession(config, projectRoot, topic);
   });
 
 program
@@ -104,16 +114,19 @@ program
       process.exit(1);
     }
 
-    const preset = yaml.load(presetContent) as Record<string, unknown>;
     const configPath = resolve(projectRoot, "office.config.yml");
     const configContent = readFileSync(configPath, "utf-8");
-    const config = yaml.load(configContent) as Record<string, unknown>;
 
-    if (preset.quality_gates) {
-      config.quality_gates = preset.quality_gates;
+    const sectionPattern = /^quality_gates:\n(?:[ \t]+.*\n)*/m;
+    const match = configContent.match(sectionPattern);
+
+    if (!match) {
+      console.error("Could not find quality_gates section in office.config.yml");
+      process.exit(1);
     }
 
-    writeFileSync(configPath, yaml.dump(config, { lineWidth: -1 }));
+    const updated = configContent.replace(sectionPattern, presetContent.trimEnd() + "\n");
+    writeFileSync(configPath, updated);
     console.log(`Applied preset: ${name}`);
     console.log("Quality gates updated in office.config.yml");
   });

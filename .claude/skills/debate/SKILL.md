@@ -53,7 +53,7 @@ The user provides an issue number via `$ARGUMENTS` (e.g., `/debate 42`). If no i
 5. **User decision.** Ask the user for their decision. When they decide:
 
 ```bash
-node dist/scripts/log-decision.js "<adr-number>" "<title>" "<context>" "<decision>" "<consequences>" "<issue-number>"
+node office/dist/scripts/log-decision.js "<adr-number>" "<title>" "<context>" "<decision>" "<consequences>" "<issue-number>"
 ```
 
 To determine the next ADR number, read `DECISIONS.md` and find the highest existing ADR number, then increment.

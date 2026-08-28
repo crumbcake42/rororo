@@ -12,7 +12,7 @@ You are reviewing the ready queue and dispatching tasks to agent pipelines.
 1. **List ready tasks.** Run:
 
 ```bash
-node dist/scripts/list-ready.js
+node office/dist/scripts/list-ready.js
 ```
 
 Parse the JSON output. If the queue is empty, tell the user and suggest they create issues or check the backlog.
@@ -31,7 +31,7 @@ Parse the JSON output. If the queue is empty, tell the user and suggest they cre
 4. **Dispatch.** For each approved task, run:
 
 ```bash
-node dist/scripts/dispatch-task.js <issue-number>
+node office/dist/scripts/dispatch-task.js <issue-number>
 ```
 
 This handles everything: worktree creation, context assembly, agent pipeline invocation, branch push, PR creation, and label updates.

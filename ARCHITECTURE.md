@@ -5,8 +5,8 @@ Agent Office is a template repository that sets up agent-driven software develop
 
 ## System Components
 
-### Dispatch System (`src/`)
-Node.js CLI application written in TypeScript. Entry point: `src/cli.ts`.
+### Dispatch System (`office/src/`)
+Node.js CLI application written in TypeScript. Entry point: `office/src/cli.ts`.
 
 | Module | Responsibility |
 |---|---|
@@ -19,6 +19,10 @@ Node.js CLI application written in TypeScript. Entry point: `src/cli.ts`.
 | `standup.ts` | Standup report generation and interactive mode |
 | `notify.ts` | Notification routing — terminal, Slack webhook, Twilio SMS |
 | `daemon.ts` | Phase 2: autonomous dispatch loop with pause/resume |
+| `create.ts` | Interactive issue creation sessions |
+
+### Script Layer (`office/src/scripts/` → `scripts/`)
+Thin TypeScript entry points compiled to `office/dist/scripts/`, invoked via bash wrappers in `scripts/`. Both the skills layer and the CLI/daemon call the same underlying modules through these scripts.
 
 ### Agent Definitions (`.claude/agents/`)
 Seven role-specific agent prompts with frontmatter specifying model routing and tool access:
@@ -29,6 +33,9 @@ Seven role-specific agent prompts with frontmatter specifying model routing and 
 - **reviewer** (Sonnet) — read-only code review
 - **ux-engineer** (Sonnet) — frontend implementation and UI/UX review
 - **security-reviewer** (Opus) — vulnerability and auth auditing
+
+### Skills Layer (`.claude/skills/`)
+Seven interactive skills invoked via slash commands in Claude Code sessions. Each skill calls the same scripts as the CLI/daemon — two interfaces to the same mechanical substrate.
 
 ### Pipeline Definitions (`pipelines/`)
 YAML files defining role sequences for each task type. The dispatch system reads the pipeline label from a GitHub Issue and executes the corresponding role sequence.
@@ -49,6 +56,7 @@ See `DECISIONS.md` for the full log. Core choices:
 - Context is files, not memory. Shared knowledge lives in committed markdown.
 - Quality gates are CI-enforced, not agent-judged.
 - Human decision points are explicit and blocking.
+- The office orchestration is isolated in `office/` — `src/` is reserved for the adopting project's code.
 
 ## Directory Structure
 ```
@@ -59,9 +67,16 @@ agent-office/
 ├── AGENTS.md                  # cross-tool agent instructions
 ├── ARCHITECTURE.md            # this file
 ├── DECISIONS.md               # architecture decision log
+├── office/                    # dispatch system (self-contained)
+│   ├── src/                   # TypeScript source
+│   ├── dist/                  # compiled output (gitignored)
+│   ├── package.json           # office dependencies
+│   └── tsconfig.json          # TypeScript config
+├── src/                       # adopting project's source code
+├── scripts/                   # bash wrappers → office/dist/scripts/
 ├── .claude/agents/            # agent role definitions
+├── .claude/skills/            # interactive skill definitions
 ├── .github/                   # issue templates + CI workflows
 ├── pipelines/                 # pipeline sequence definitions
-├── presets/                   # stack-specific quality gate presets
-└── src/                       # dispatch system source (TypeScript)
+└── presets/                   # stack-specific quality gate presets
 ```

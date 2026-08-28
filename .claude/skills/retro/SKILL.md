@@ -12,7 +12,7 @@ You are running a data-driven retrospective.
 1. **Gather metrics.** Run:
 
 ```bash
-node dist/scripts/retro-metrics.js
+node office/dist/scripts/retro-metrics.js
 ```
 
 Parse the JSON output.
@@ -29,7 +29,7 @@ Parse the JSON output.
 4. **Surface actionable changes.** If the discussion reveals process improvements, offer to create issues for them:
 
 ```bash
-node dist/scripts/create-issue.js "<title>" "<body>" "status:ready,pipeline:chore"
+node office/dist/scripts/create-issue.js "<title>" "<body>" "status:ready,pipeline:chore"
 ```
 
 5. **Keep it quantitative.** This retrospective is scoped to signals from the data. No soft process reflections — the numbers tell the story, the user provides the interpretation.

@@ -14,13 +14,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
 
-      - run: npm ci
+      - name: Install office dependencies
+        run: cd office && npm ci
+
+      - name: Build office
+        run: cd office && npm run build
 
       - name: Read quality gate commands
         id: gates
-        run: node scripts/read-gates.js
+        run: node office/dist/scripts/read-gates.js
 
       - name: Test
         if: steps.gates.outputs.test_cmd != ''

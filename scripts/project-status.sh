@@ -1,2 +1,2 @@
 #!/bin/bash
-node "$(dirname "$0")/../dist/scripts/project-status.js" "$@"
+node "$(dirname "$0")/../office/dist/scripts/project-status.js" "$@"

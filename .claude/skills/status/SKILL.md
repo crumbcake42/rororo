@@ -12,7 +12,7 @@ You are providing a quick project status check.
 1. **Get the data.** Run:
 
 ```bash
-node dist/scripts/project-status.js
+node office/dist/scripts/project-status.js
 ```
 
 Parse the JSON output.

@@ -12,8 +12,8 @@ You are running an interactive planning session.
 1. **Gather current state.** Run these to understand where things stand:
 
 ```bash
-node dist/scripts/project-status.js
-node dist/scripts/list-ready.js
+node office/dist/scripts/project-status.js
+node office/dist/scripts/list-ready.js
 ```
 
 Also read:
@@ -43,7 +43,7 @@ Also read:
 5. **Create approved tasks.** For each task the user approves, run:
 
 ```bash
-node dist/scripts/create-issue.js "<title>" "<body>" "status:ready,pipeline:<pipeline-name>"
+node office/dist/scripts/create-issue.js "<title>" "<body>" "status:ready,pipeline:<pipeline-name>"
 ```
 
 Use `status:ready` for tasks with no unmet dependencies. Use `status:backlog` for tasks that depend on other work completing first.

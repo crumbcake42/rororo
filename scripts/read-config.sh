@@ -1,2 +1,2 @@
 #!/bin/bash
-node "$(dirname "$0")/../dist/scripts/read-config.js" "$@"
+node "$(dirname "$0")/../office/dist/scripts/read-config.js" "$@"

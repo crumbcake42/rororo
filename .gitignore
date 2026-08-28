@@ -1,5 +1,6 @@
 node_modules/
-dist/
+office/dist/
+office/node_modules/
 .env
 .worktrees/
 .office-daemon-state.json

@@ -1,2 +1,2 @@
 #!/bin/bash
-node "$(dirname "$0")/../dist/scripts/set-labels.js" "$@"
+node "$(dirname "$0")/../office/dist/scripts/set-labels.js" "$@"

@@ -30,7 +30,7 @@ Walk through these steps conversationally — don't dump a form, have a discussi
 8. **On approval**, run the `create-issue` script:
 
 ```bash
-node dist/scripts/create-issue.js "<title>" "<body>" "status:backlog,pipeline:<pipeline-name>"
+node office/dist/scripts/create-issue.js "<title>" "<body>" "status:backlog,pipeline:<pipeline-name>"
 ```
 
 If the task has no dependencies and is ready to dispatch, use `status:ready` instead of `status:backlog`.

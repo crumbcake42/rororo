@@ -12,7 +12,7 @@ You are running an interactive standup session.
 1. **Gather data.** Run:
 
 ```bash
-node dist/scripts/standup-report.js
+node office/dist/scripts/standup-report.js
 ```
 
 Parse the JSON output.

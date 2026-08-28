@@ -32,6 +32,11 @@ export async function getStatus(): Promise<StatusReport> {
   };
 
   for (const issue of issues) {
+    if (issue.state === "closed") {
+      report.done.push(issue);
+      continue;
+    }
+
     const status = getStatusLabel(issue);
     switch (status) {
       case "ready":

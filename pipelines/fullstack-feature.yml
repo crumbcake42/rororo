@@ -8,7 +8,7 @@ steps:
   - role: architect
     description: "Design the feature and document decisions"
     outputs:
-      - DECISIONS.md
+      - Relevant office/specs/ updated
       - ARCHITECTURE.md (if system design changes)
 
   - role: implementer

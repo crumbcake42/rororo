@@ -8,7 +8,7 @@ steps:
   - role: architect
     description: "Design the refactoring approach and document decisions"
     outputs:
-      - DECISIONS.md
+      - Relevant office/specs/ updated
       - ARCHITECTURE.md (if structure changes)
 
   - role: implementer

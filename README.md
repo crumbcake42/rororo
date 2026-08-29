@@ -109,4 +109,4 @@ Tasks are assigned a pipeline via GitHub Issue labels. Each pipeline defines the
 
 All settings live in `office.config.yml`. Secrets live in `.env` (gitignored).
 
-See `ARCHITECTURE.md` for system design and `DECISIONS.md` for architecture decision history.
+See `ARCHITECTURE.md` for system design, `office/specs/` for harness specifications, `src/openspec/` for project specifications, and `PITFALLS.md` for known anti-patterns.

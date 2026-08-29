@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, existsSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -87,11 +87,25 @@ function assembleContext(
     parts.push("");
   }
 
-  const decisionsPath = resolve(projectRoot, "DECISIONS.md");
-  if (existsSync(decisionsPath)) {
-    parts.push("## Decisions\n");
-    parts.push(readFileSync(decisionsPath, "utf-8"));
+  const pitfallsPath = resolve(projectRoot, "PITFALLS.md");
+  if (existsSync(pitfallsPath)) {
+    parts.push("## Pitfalls\n");
+    parts.push(readFileSync(pitfallsPath, "utf-8"));
     parts.push("");
+  }
+
+  const specsDir = resolve(projectRoot, "office", "specs");
+  if (existsSync(specsDir)) {
+    const specDirs = readdirSync(specsDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory());
+    for (const dir of specDirs) {
+      const specFile = resolve(specsDir, dir.name, "spec.md");
+      if (existsSync(specFile)) {
+        parts.push(`## Spec: ${dir.name}\n`);
+        parts.push(readFileSync(specFile, "utf-8"));
+        parts.push("");
+      }
+    }
   }
 
   parts.push("## Pipeline Context\n");
@@ -314,7 +328,7 @@ async function runAdversarialDebate(
     );
     await addComment(
       issue.number,
-      `The adversarial debate is complete and the PM has provided a synthesis above.\n\nPlease review and respond with your decision. This will be logged in DECISIONS.md.`
+      `The adversarial debate is complete and the PM has provided a synthesis above.\n\nPlease review and respond with your decision. The architect will update ARCHITECTURE.md and the relevant OpenSpec spec to reflect the approved decision.`
     );
     await notify(config, {
       issueNumber: issue.number,

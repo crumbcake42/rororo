@@ -26,8 +26,9 @@
 ## File Ownership
 - Agents may only modify files within the scope specified in their dispatched task.
 - Shared config files (`office.config.yml`, `CLAUDE.md`, `AGENTS.md`) require PM or user approval to modify.
-- `ARCHITECTURE.md` is updated by the architect role only.
-- `DECISIONS.md` is updated by the architect or PM role only.
+- `ARCHITECTURE.md` is updated by the architect role only. Edited in place, not appended. Target: under 200 lines.
+- `office/specs/` are updated by the architect role only. Each spec file target: under 150 lines.
+- `PITFALLS.md` can be updated by any role when an observed failure reveals a non-obvious anti-pattern. Target: under 100 lines.
 
 ## Commit Messages
 Format: `<type>(<scope>): <description>`

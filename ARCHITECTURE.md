@@ -1,18 +1,19 @@
-# Agent Office — Architecture
+# Architecture
 
-## Overview
-Agent Office is a template repository that sets up agent-driven software development as a managed virtual office. A human user operates as lead project manager. AI agents fill distinct team roles and execute work semi-independently under mechanical process controls.
+## Stack & Dependencies
+Node.js 22, TypeScript 5.5 strict, ES modules.
+GitHub API via Octokit. No database.
+OpenSpec for specification management.
 
-## System Components
+## Module Map
 
 ### Dispatch System (`office/src/`)
-Node.js CLI application written in TypeScript. Entry point: `office/src/cli.ts`.
 
 | Module | Responsibility |
 |---|---|
 | `cli.ts` | Command routing — `dispatch`, `status`, `standup`, `pause`, `resume`, `preset` |
 | `config.ts` | Reads and validates `office.config.yml` |
-| `github.ts` | GitHub API wrapper via Octokit — issues, labels, comments |
+| `github.ts` | GitHub API wrapper — issues, labels, comments |
 | `worktree.ts` | Git worktree creation, cleanup, branch naming |
 | `dispatch.ts` | Context assembly, agent invocation, pipeline step management |
 | `status.ts` | Issue state aggregation and formatting |
@@ -22,61 +23,53 @@ Node.js CLI application written in TypeScript. Entry point: `office/src/cli.ts`.
 | `create.ts` | Interactive issue creation sessions |
 
 ### Script Layer (`office/src/scripts/` → `scripts/`)
-Thin TypeScript entry points compiled to `office/dist/scripts/`, invoked via bash wrappers in `scripts/`. Both the skills layer and the CLI/daemon call the same underlying modules through these scripts.
+Thin TypeScript entry points compiled to `office/dist/scripts/`, invoked via bash wrappers in `scripts/`.
 
-### Agent Definitions (`.claude/agents/`)
-Seven role-specific agent prompts with frontmatter specifying model routing and tool access:
-- **pm** (Opus) — coordination, synthesis, dispatch
-- **architect** (Opus) — design decisions, adversarial debate
-- **implementer** (Sonnet) — code writing
-- **test-writer** (Sonnet) — test authoring against code they didn't write
-- **reviewer** (Sonnet) — read-only code review
-- **ux-engineer** (Sonnet) — frontend implementation and UI/UX review
-- **security-reviewer** (Opus) — vulnerability and auth auditing
+### Agent Roles (`.claude/agents/`)
 
-### Skills Layer (`.claude/skills/`)
-Seven interactive skills invoked via slash commands in Claude Code sessions. Each skill calls the same scripts as the CLI/daemon — two interfaces to the same mechanical substrate.
+| Role | Model | Purpose |
+|---|---|---|
+| pm | Opus | Coordination, synthesis, dispatch, debate judging |
+| architect | Opus | Design decisions, adversarial debate |
+| implementer | Sonnet | Code writing |
+| test-writer | Sonnet | Test authoring against code they didn't write |
+| reviewer | Sonnet | Read-only code review |
+| ux-engineer | Sonnet | Frontend implementation and UI/UX review |
+| security-reviewer | Opus | Vulnerability and auth auditing |
 
-### Pipeline Definitions (`pipelines/`)
-YAML files defining role sequences for each task type. The dispatch system reads the pipeline label from a GitHub Issue and executes the corresponding role sequence.
+Model routing rationale: Opus for judgment-critical roles, Sonnet for throughput roles. Overridable in `office.config.yml`.
 
-### GitHub Integration (`.github/`)
-- **Issue Templates** — structured task creation with pre-applied labels
-- **Workflows** — CI quality gates, dependency unblocking, human-decision unblocking, branch promotion
+## Data Flow
+Issue (GitHub) → dispatch → worktree + agent → PR → quality gates (CI) → merge
 
-### Configuration
-- `office.config.yml` — all toggleable settings (branch strategy, notification mode, model routing, quality gates, adversarial review config)
-- `.env` — secrets (gitignored)
-- `presets/` — stack-specific quality gate commands
+## Branch Strategy
+Configurable in `office.config.yml`:
+- **Tiered** (default): feature → dev → staging → main. Agent worktrees branch from dev.
+- **Simple**: feature → main. For early-stage projects.
 
-## Key Design Decisions
-See `DECISIONS.md` for the full log. Core choices:
+All agent work happens in isolated git worktrees under `.worktrees/` (gitignored).
+
+## Constraints
 - Process infrastructure is mechanical (scripts, CI). Intelligence goes into agents.
 - Each agent invocation is stateless and scoped. No persistent agent memory.
-- Context is files, not memory. Shared knowledge lives in committed markdown.
+- Context is files, not memory. Shared knowledge lives in committed markdown (`office/specs/` for harness, `src/openspec/` for project).
 - Quality gates are CI-enforced, not agent-judged.
 - Human decision points are explicit and blocking.
-- The office orchestration is isolated in `office/` — `src/` is reserved for the adopting project's code.
+- The office orchestration is isolated in `office/`; `src/` is reserved for the adopting project's code.
 
 ## Directory Structure
 ```
-agent-office/
+project-root/
 ├── office.config.yml          # toggleable settings
-├── .env.example               # secrets template
-├── CLAUDE.md                  # project rules for agents
-├── AGENTS.md                  # cross-tool agent instructions
-├── ARCHITECTURE.md            # this file
-├── DECISIONS.md               # architecture decision log
+├── CLAUDE.md / AGENTS.md      # agent rules
+├── ARCHITECTURE.md            # this file (living, edited in place)
+├── PITFALLS.md                # non-obvious anti-patterns
+├── office/specs/              # harness specs (task-mgmt, dispatch, adversarial review)
+├── src/openspec/              # adopting project's OpenSpec specs
 ├── office/                    # dispatch system (self-contained)
-│   ├── src/                   # TypeScript source
-│   ├── dist/                  # compiled output (gitignored)
-│   ├── package.json           # office dependencies
-│   └── tsconfig.json          # TypeScript config
 ├── src/                       # adopting project's source code
-├── scripts/                   # bash wrappers → office/dist/scripts/
+├── scripts/                   # bash wrappers
 ├── .claude/agents/            # agent role definitions
-├── .claude/skills/            # interactive skill definitions
-├── .github/                   # issue templates + CI workflows
 ├── pipelines/                 # pipeline sequence definitions
 └── presets/                   # stack-specific quality gate presets
 ```

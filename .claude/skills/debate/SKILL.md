@@ -22,7 +22,8 @@ The user provides an issue number via `$ARGUMENTS` (e.g., `/debate 42`). If no i
 1. **Load context.** Read:
    - The issue: `gh issue view <number> --json number,title,body,labels`
    - `ARCHITECTURE.md` — current system design
-   - `DECISIONS.md` — existing ADRs and constraints
+   - `office/specs/` — existing specifications and constraints
+   - `PITFALLS.md` — known anti-patterns
    - `office.config.yml` — adversarial config (directives, max rounds)
 
 2. **Read the adversarial config.** From `office.config.yml`, get:
@@ -32,7 +33,7 @@ The user provides an issue number via `$ARGUMENTS` (e.g., `/debate 42`). If no i
 3. **Run the debate.** For each round (1 to max_rounds):
 
    a. **Architect A** argues their position. Spawn a sub-agent:
-   - Give them the issue context, `ARCHITECTURE.md`, `DECISIONS.md`
+   - Give them the issue context, `ARCHITECTURE.md`, relevant `office/specs/`, `PITFALLS.md`
    - Give them their directive (first entry in `architect_directives`)
    - Give them any prior round transcripts
    - Ask for their argument for this round
@@ -51,12 +52,10 @@ The user provides an issue number via `$ARGUMENTS` (e.g., `/debate 42`). If no i
    - Present the synthesis to the user
 
 5. **User decision.** Ask the user for their decision. When they decide:
-
-```bash
-node office/dist/scripts/log-decision.js "<adr-number>" "<title>" "<context>" "<decision>" "<consequences>" "<issue-number>"
-```
-
-To determine the next ADR number, read `DECISIONS.md` and find the highest existing ADR number, then increment.
+   - Update `ARCHITECTURE.md` to reflect the decision (edit the relevant section in place).
+   - If the decision introduces new behavioral requirements, update or create the relevant `office/specs/` file.
+   - If the decision reveals a non-obvious anti-pattern, add an entry to `PITFALLS.md`.
+   - Comment the decision on the GitHub Issue for the record.
 
 ## Key Difference from Autonomous Debate
 
@@ -69,4 +68,4 @@ The underlying mechanics (opposing directives, PM synthesis, decision logging) a
 - Present each round's arguments clearly and separately. Don't summarize mid-debate.
 - If the user wants to interject between rounds (ask a clarifying question, redirect a line of argument), pause the debate and address their input before continuing.
 - The debate always runs to the configured max rounds. No early exit on apparent convergence — wrong-consensus convergence is the failure mode this process guards against.
-- After the decision is logged, report the ADR number and confirm the issue was updated.
+- After the decision is recorded, confirm which files were updated and that the issue was commented.

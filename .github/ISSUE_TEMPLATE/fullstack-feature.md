@@ -24,7 +24,7 @@ labels: ["status:backlog", "pipeline:fullstack-feature"]
 - Blocked by #...
 
 ## Architecture Decisions Required
-<!-- List any decisions that must be in DECISIONS.md before implementation -->
+<!-- List any decisions that must be resolved in ARCHITECTURE.md or office/specs/ or src/openspec/specs/ before implementation -->
 - ...
 
 ## Additional Context

@@ -35,6 +35,8 @@ Format: `<type>(<scope>): <description>`
 
 Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`
 
+Do not hard-wrap or break lines in commit messages. Let the terminal handle wrapping.
+
 Examples:
 - `feat(dispatch): add context assembly for pipeline steps`
 - `fix(worktree): handle branch name collisions`

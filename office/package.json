@@ -12,8 +12,10 @@
     "test": "node --loader ts-node/esm --no-warnings src/daemon.test.ts",
     "lint": "npx eslint src/ --max-warnings 0",
     "typecheck": "tsc --noEmit",
+    "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "format": "npx prettier --write src/",
-    "format:check": "npx prettier --check src/"
+    "format:check": "npx prettier --check src/",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/tests/daemon.test.js"
   },
   "dependencies": {
     "@octokit/rest": "^21.0.0",

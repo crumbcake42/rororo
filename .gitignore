@@ -1,5 +1,6 @@
 node_modules/
 office/dist/
+office/dist-test/
 office/node_modules/
 .env
 .worktrees/

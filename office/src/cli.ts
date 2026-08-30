@@ -118,12 +118,12 @@ program
     const configPath = resolve(projectRoot, "office.config.yml");
     const configContent = readFileSync(configPath, "utf-8");
 
-    const sectionPattern = /^quality_gates:\n(?:[ \t]+.*\n)*/m;
+    const sectionPattern = /^project_gates:\r?\n(?:[ \t]+.*\r?\n)*/m;
     const match = configContent.match(sectionPattern);
 
     if (!match) {
       console.error(
-        "Could not find quality_gates section in office.config.yml",
+        "Could not find project_gates section in office.config.yml",
       );
       process.exit(1);
     }
@@ -134,7 +134,7 @@ program
     );
     writeFileSync(configPath, updated);
     console.log(`Applied preset: ${name}`);
-    console.log("Quality gates updated in office.config.yml");
+    console.log("Project quality gates updated in office.config.yml");
   });
 
 program.parse();

@@ -1,4 +1,4 @@
-quality_gates:
+project_gates:
   test:
     command: "npm test"
   lint:

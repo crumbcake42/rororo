@@ -40,7 +40,8 @@ export interface OfficeConfig {
     sonnet: string;
   };
   role_models: Record<string, string>;
-  quality_gates: Record<string, QualityGate>;
+  template_gates: Record<string, QualityGate>;
+  project_gates: Record<string, QualityGate>;
   adversarial: AdversarialConfig;
   standup: StandupConfig;
 }
@@ -92,7 +93,8 @@ export function loadConfig(projectRoot?: string): OfficeConfig {
         "claude-sonnet-4-6",
     },
     role_models: (raw.role_models as Record<string, string>) ?? {},
-    quality_gates: (raw.quality_gates as Record<string, QualityGate>) ?? {},
+    template_gates: (raw.template_gates as Record<string, QualityGate>) ?? {},
+    project_gates: (raw.project_gates as Record<string, QualityGate>) ?? {},
     adversarial: {
       max_rounds:
         ((raw.adversarial as Record<string, unknown>)?.max_rounds as number) ??

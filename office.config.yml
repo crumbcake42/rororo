@@ -68,18 +68,31 @@ role_models:
   security-reviewer: opus
 
 # --- Quality Gates -----------------------------------------------------------
-# Named commands that CI and the dispatch script invoke.
+# Two gate sets: template gates run against office/, project gates run against
+# the adopting project's code. CI detects which paths changed and runs the
+# appropriate set. PRs touching both paths run both.
+#
+# Template gates are self-contained — they don't depend on the adopter's stack.
+# Project gates are filled by `office preset <name>` or manually.
+
+template_gates:
+  test:
+    command: "cd office && npm test"
+  typecheck:
+    command: "cd office && npm run typecheck"
+  format_check:
+    command: "cd office && npm run format:check"
+
 # Apply a preset (`office preset typescript-node`) or fill in manually.
-# All gates must pass before a PR can merge.
-quality_gates:
+project_gates:
   test:
     command: ""
   lint:
     command: ""
   typecheck:
-    command: "cd office && npm run typecheck"
+    command: ""
   format_check:
-    command: "cd office && npm run format:check"
+    command: ""
 
 # --- Adversarial Review ------------------------------------------------------
 # Controls for the architecture-decision pipeline's debate format.

@@ -239,6 +239,27 @@ export async function createIssue(
   };
 }
 
+export async function getPR(prNumber: number): Promise<GitHubPR> {
+  const octokit = getOctokit();
+  const { owner, repo } = getRepoInfo();
+
+  const { data } = await octokit.rest.pulls.get({
+    owner,
+    repo,
+    pull_number: prNumber,
+  });
+
+  return {
+    number: data.number,
+    title: data.title,
+    head_branch: data.head.ref,
+    base_branch: data.base.ref,
+    state: data.state,
+    merged: data.merged_at !== null,
+    html_url: data.html_url,
+  };
+}
+
 export async function listRecentPRs(
   state: "open" | "closed" | "all" = "all",
   limit = 20,

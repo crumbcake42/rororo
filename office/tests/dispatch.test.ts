@@ -341,4 +341,24 @@ describe("dispatchNext() priority label", () => {
     const result = await dispatchNext(minimalConfig, tmpDir, 42, undefined);
     assert.equal(result, false);
   });
+
+  test("removes opposing priority:low when setting priority:high", async () => {
+    stubbedIssueLabels = ["status:ready", "priority:low"];
+    await dispatchNext(minimalConfig, tmpDir, 42, "high");
+    const priorityCall = setLabelsCalls.find(([, add]) =>
+      add.includes("priority:high"),
+    );
+    assert.ok(priorityCall, "setLabels should have been called with priority:high");
+    assert.deepEqual(priorityCall![2], ["priority:low"]);
+  });
+
+  test("removes opposing priority:high when setting priority:low", async () => {
+    stubbedIssueLabels = ["status:ready", "priority:high"];
+    await dispatchNext(minimalConfig, tmpDir, 42, "low");
+    const priorityCall = setLabelsCalls.find(([, add]) =>
+      add.includes("priority:low"),
+    );
+    assert.ok(priorityCall, "setLabels should have been called with priority:low");
+    assert.deepEqual(priorityCall![2], ["priority:high"]);
+  });
 });

@@ -9,6 +9,7 @@ import {
   resumeDaemon as resume,
   isDaemonPaused,
   daemonStatus,
+  SessionBudget,
 } from "../src/daemon.js";
 
 const STATE_FILE = ".office-daemon-state.json";
@@ -290,5 +291,52 @@ describe("daemonStatus()", () => {
     assert.ok(lines.some((l) => l.includes("Tasks dispatched:")), "missing Tasks dispatched line");
     assert.ok(lines.some((l) => l.includes("Last dispatch:")), "missing Last dispatch line");
     assert.ok(lines.some((l) => l.includes("Ready queue:")), "missing Ready queue line");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SessionBudget
+// ---------------------------------------------------------------------------
+
+describe("SessionBudget", () => {
+  test("shouldWindDown returns false when budget is 0 (unlimited)", () => {
+    const budget = new SessionBudget(0, 80);
+    budget.recordAgentTime(999_999);
+    assert.equal(budget.shouldWindDown(), false);
+  });
+
+  test("shouldWindDown returns false below threshold", () => {
+    const budget = new SessionBudget(10, 80); // 10 min, 80%
+    budget.recordAgentTime(4 * 60_000); // 4 of 10 min = 40%
+    assert.equal(budget.shouldWindDown(), false);
+  });
+
+  test("shouldWindDown returns true at threshold", () => {
+    const budget = new SessionBudget(10, 80);
+    budget.recordAgentTime(8 * 60_000); // 8 of 10 min = 80%
+    assert.equal(budget.shouldWindDown(), true);
+  });
+
+  test("shouldWindDown returns true above threshold", () => {
+    const budget = new SessionBudget(10, 80);
+    budget.recordAgentTime(9 * 60_000); // 90%
+    assert.equal(budget.shouldWindDown(), true);
+  });
+
+  test("recordAgentTime accumulates across calls", () => {
+    const budget = new SessionBudget(10, 50);
+    budget.recordAgentTime(2 * 60_000);
+    assert.equal(budget.shouldWindDown(), false); // 20%
+    budget.recordAgentTime(3 * 60_000);
+    assert.equal(budget.shouldWindDown(), true); // 50%
+  });
+
+  test("reason() formats consumed vs budget", () => {
+    const budget = new SessionBudget(60, 80);
+    budget.recordAgentTime(45 * 60_000);
+    const msg = budget.reason();
+    assert.ok(msg.includes("45"), `expected '45' in: ${msg}`);
+    assert.ok(msg.includes("60"), `expected '60' in: ${msg}`);
+    assert.ok(msg.includes("80%"), `expected '80%' in: ${msg}`);
   });
 });

@@ -581,8 +581,12 @@ export async function dispatchNext(
     if (priority) {
       const priorityLabel = `priority:${priority}`;
       if (!issue.labels.includes(priorityLabel)) {
-        await setLabels(issue.number, [priorityLabel], []);
+        const opposite =
+          priority === "high" ? "priority:low" : "priority:high";
+        const remove = issue.labels.includes(opposite) ? [opposite] : [];
+        await setLabels(issue.number, [priorityLabel], remove);
         issue.labels.push(priorityLabel);
+        issue.labels = issue.labels.filter((l) => !remove.includes(l));
       }
     }
   } else {

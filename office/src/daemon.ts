@@ -8,7 +8,7 @@ import { notify } from "./notify.js";
 const STATE_FILE = ".office-daemon-state.json";
 const DEFAULT_HIBERNATION_INTERVAL_S = 300;
 
-class SessionBudget implements UsageBudget {
+export class SessionBudget implements UsageBudget {
   private budgetMs: number;
   private thresholdPct: number;
   private elapsedMs = 0;

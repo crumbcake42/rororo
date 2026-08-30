@@ -245,6 +245,7 @@ export function invokeAgent(
   step: PipelineStep,
   contextPrompt: string,
   captureOutput = false,
+  readOnly = false,
 ): string {
   const model = getModelForRole(config, step.role);
   const agentFile = resolve(
@@ -262,7 +263,9 @@ export function invokeAgent(
     "--model",
     model,
     "--print",
-    "--dangerously-skip-permissions",
+    ...(readOnly
+      ? ["--permission-mode", "plan"]
+      : ["--dangerously-skip-permissions"]),
     "--append-system-prompt-file",
     agentFile,
   ];

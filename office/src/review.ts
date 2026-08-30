@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { OfficeConfig } from "./config.js";
@@ -6,44 +6,68 @@ import { getPR, addComment } from "./github.js";
 import { invokeAgent } from "./dispatch.js";
 import type { PipelineStep } from "./dispatch.js";
 
-function fetchAndDiff(
+const MAX_CONTEXT_BYTES = 100_000;
+
+function gitSpawn(
+  projectRoot: string,
+  args: string[],
+): { stdout: string; stderr: string } {
+  const result = spawnSync("git", args, {
+    cwd: projectRoot,
+    encoding: "utf-8",
+    stdio: "pipe",
+    timeout: 30_000,
+  });
+
+  if (result.status !== 0) {
+    const msg = (result.stderr ?? "").trim() || `git ${args[0]} failed`;
+    throw new Error(msg);
+  }
+
+  return { stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
+
+export function fetchAndDiff(
   projectRoot: string,
   baseBranch: string,
   headBranch: string,
 ): { diff: string; changedFiles: string[] } {
-  execSync("git fetch origin", { cwd: projectRoot, stdio: "pipe" });
+  gitSpawn(projectRoot, ["fetch", "origin"]);
 
-  const diff = execSync(
-    `git diff "origin/${baseBranch}...origin/${headBranch}"`,
-    { cwd: projectRoot, encoding: "utf-8", stdio: "pipe" },
-  );
+  const { stdout: diff } = gitSpawn(projectRoot, [
+    "diff",
+    `origin/${baseBranch}...origin/${headBranch}`,
+  ]);
 
-  const nameOnly = execSync(
-    `git diff --name-only "origin/${baseBranch}...origin/${headBranch}"`,
-    { cwd: projectRoot, encoding: "utf-8", stdio: "pipe" },
-  );
+  const { stdout: nameOnly } = gitSpawn(projectRoot, [
+    "diff",
+    "--name-only",
+    `origin/${baseBranch}...origin/${headBranch}`,
+  ]);
 
   const changedFiles = nameOnly.trim().split("\n").filter(Boolean);
   return { diff, changedFiles };
 }
 
-function readFileAtRef(
+export function readFileAtRef(
   projectRoot: string,
   ref: string,
   filePath: string,
 ): string {
   try {
-    return execSync(`git show "${ref}:${filePath}"`, {
-      cwd: projectRoot,
-      encoding: "utf-8",
-      stdio: "pipe",
-    });
+    const { stdout } = gitSpawn(projectRoot, ["show", `${ref}:${filePath}`]);
+    return stdout;
   } catch {
     return "";
   }
 }
 
-function assembleReviewContext(
+function truncate(text: string, maxBytes: number): string {
+  if (text.length <= maxBytes) return text;
+  return text.slice(0, maxBytes) + "\n\n[truncated — context limit reached]";
+}
+
+export function assembleReviewContext(
   projectRoot: string,
   pr: {
     number: number;
@@ -135,7 +159,7 @@ function assembleReviewContext(
     "- **Architecture/spec contradictions**: Does any part of the implementation contradict ARCHITECTURE.md or the specs above?",
   );
 
-  return parts.join("\n");
+  return truncate(parts.join("\n"), MAX_CONTEXT_BYTES);
 }
 
 export async function reviewPR(
@@ -184,6 +208,7 @@ export async function reviewPR(
     projectRoot,
     step,
     context,
+    true,
     true,
   );
 

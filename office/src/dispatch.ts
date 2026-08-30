@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, mkdirSync } from "node:fs";
 import { execSync, spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import yaml from "js-yaml";
@@ -18,6 +18,7 @@ import {
   branchName,
   createWorktree,
   cleanupWorktree,
+  type WorktreeInfo,
 } from "./worktree.js";
 import { notify } from "./notify.js";
 
@@ -39,6 +40,112 @@ export interface Pipeline {
   description: string;
   adversarial?: boolean;
   steps: PipelineStep[];
+}
+
+const WORKTREE_DIR = ".worktrees";
+
+function remoteBranchExists(projectRoot: string, branch: string): boolean {
+  try {
+    const output = execSync(`git ls-remote --heads origin "${branch}"`, {
+      cwd: projectRoot,
+      stdio: "pipe",
+      encoding: "utf-8",
+    });
+    return output.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function createWorktreeFromRemote(
+  projectRoot: string,
+  branch: string,
+  issueNumber: number
+): WorktreeInfo {
+  const worktreeBase = resolve(projectRoot, WORKTREE_DIR);
+  if (!existsSync(worktreeBase)) {
+    mkdirSync(worktreeBase, { recursive: true });
+  }
+
+  const dirName = branch.replace(/\//g, "-");
+  const worktreePath = resolve(worktreeBase, dirName);
+
+  if (existsSync(worktreePath)) {
+    throw new Error(`Worktree already exists at ${worktreePath}. Clean it up first.`);
+  }
+
+  execSync(
+    `git worktree add -B "${branch}" "${worktreePath}" "origin/${branch}"`,
+    { cwd: projectRoot, stdio: "pipe" }
+  );
+
+  return { path: worktreePath, branch, issueNumber };
+}
+
+function getCompletedStepIndices(worktreePath: string): Set<number> {
+  try {
+    const log = execSync("git log --format=%s", {
+      cwd: worktreePath,
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    const completed = new Set<number>();
+    for (const subject of log.split("\n")) {
+      const match = subject.match(/^step (\d+)\/\d+:/);
+      if (match) {
+        completed.add(parseInt(match[1], 10) - 1);
+      }
+    }
+    return completed;
+  } catch {
+    return new Set();
+  }
+}
+
+function commitStep(
+  worktreePath: string,
+  stepNumber: number,
+  totalSteps: number,
+  role: string
+): void {
+  const status = execSync("git status --porcelain", {
+    cwd: worktreePath,
+    encoding: "utf-8",
+    stdio: "pipe",
+  });
+  if (status.trim().length === 0) {
+    console.log(`  No changes from step ${stepNumber}/${totalSteps} (${role}) — skipping commit.`);
+    return;
+  }
+  execSync("git add -A", { cwd: worktreePath, stdio: "pipe" });
+  execSync(
+    `git commit -m "step ${stepNumber}/${totalSteps}: ${role}"`,
+    { cwd: worktreePath, stdio: "pipe" }
+  );
+  console.log(`  Committed step ${stepNumber}/${totalSteps}: ${role}.`);
+}
+
+function pushBranchOnFailure(
+  worktreePath: string,
+  branch: string,
+  baseBranch: string
+): void {
+  try {
+    const ahead = execSync(
+      `git log "origin/${baseBranch}..HEAD" --oneline`,
+      { cwd: worktreePath, encoding: "utf-8", stdio: "pipe" }
+    );
+    if (ahead.trim().length === 0) {
+      return;
+    }
+    console.log(`Pushing branch ${branch} to preserve completed steps...`);
+    execSync(`git push -u origin "${branch}"`, {
+      cwd: worktreePath,
+      stdio: "pipe",
+    });
+  } catch {
+    // Best-effort
+  }
 }
 
 function loadPipeline(
@@ -382,12 +489,16 @@ export async function dispatchIssue(
     ["status:ready"]
   );
 
-  const worktree = createWorktree(
-    projectRoot,
-    baseBranch,
-    branch,
-    issue.number
-  );
+  execSync("git fetch origin", { cwd: projectRoot, stdio: "pipe" });
+  const resuming = remoteBranchExists(projectRoot, branch);
+
+  const worktree = resuming
+    ? createWorktreeFromRemote(projectRoot, branch, issue.number)
+    : createWorktree(projectRoot, baseBranch, branch, issue.number);
+
+  if (resuming) {
+    console.log(`Resuming pipeline from existing branch ${branch}.`);
+  }
 
   try {
     const comments = await getIssueComments(issue.number);
@@ -402,6 +513,14 @@ export async function dispatchIssue(
         pipeline
       );
       return;
+    }
+
+    const completedSteps = resuming
+      ? getCompletedStepIndices(worktree.path)
+      : new Set<number>();
+
+    if (completedSteps.size > 0) {
+      console.log(`Skipping ${completedSteps.size} already-completed step(s).`);
     }
 
     for (let i = 0; i < pipeline.steps.length; i++) {
@@ -429,6 +548,13 @@ export async function dispatchIssue(
         return;
       }
 
+      if (completedSteps.has(i)) {
+        console.log(
+          `\n--- Step ${i + 1}/${pipeline.steps.length}: ${step.role} (already completed, skipping) ---`
+        );
+        continue;
+      }
+
       console.log(
         `\n--- Step ${i + 1}/${pipeline.steps.length}: ${step.role} ---`
       );
@@ -448,6 +574,8 @@ export async function dispatchIssue(
         step,
         context
       );
+
+      commitStep(worktree.path, i + 1, pipeline.steps.length, step.role);
     }
 
     console.log(`\nPushing branch ${branch} to origin...`);
@@ -485,6 +613,8 @@ export async function dispatchIssue(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : String(error);
+
+    pushBranchOnFailure(worktree.path, branch, baseBranch);
 
     await addComment(
       issue.number,

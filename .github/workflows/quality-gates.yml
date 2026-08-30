@@ -12,13 +12,15 @@ jobs:
       project_changed: ${{ steps.filter.outputs.project }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Detect changed paths
         id: filter
         run: |
           BASE=${{ github.event.pull_request.base.sha }}
           HEAD=${{ github.event.pull_request.head.sha }}
-          CHANGED=$(git diff --name-only "$BASE" "$HEAD" || git diff --name-only HEAD~1)
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD")
 
           if echo "$CHANGED" | grep -q '^office/'; then
             echo "office=true" >> "$GITHUB_OUTPUT"

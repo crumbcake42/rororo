@@ -238,13 +238,14 @@ function assembleContext(
   return parts.join("\n");
 }
 
-function invokeAgent(
+export function invokeAgent(
   config: OfficeConfig,
   projectRoot: string,
   worktreePath: string,
   step: PipelineStep,
   contextPrompt: string,
   captureOutput = false,
+  readOnly = false,
 ): Promise<string> {
   const model = getModelForRole(config, step.role);
   const agentFile = resolve(
@@ -264,7 +265,9 @@ function invokeAgent(
     "--model",
     model,
     "--print",
-    "--dangerously-skip-permissions",
+    ...(readOnly
+      ? ["--permission-mode", "plan"]
+      : ["--dangerously-skip-permissions"]),
     "--append-system-prompt-file",
     agentFile,
   ];

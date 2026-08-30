@@ -39,15 +39,32 @@ The dispatch daemon is a background process that continuously dispatches ready t
 
 ## Pause / Resume
 
-### Scenario: User pauses the daemon
+### Scenario: User pauses the daemon (no args)
 - GIVEN the daemon is in active or hibernation state
-- WHEN `office pause` is invoked
+- WHEN `office pause` is invoked without an issue number
 - THEN the state file is updated, the daemon enters paused state, and notifies that it was paused
 
-### Scenario: User resumes the daemon
+### Scenario: User pauses a specific pipeline
+- GIVEN a pipeline is running for an issue
+- WHEN `office pause <issue>` is invoked with an issue number
+- THEN a signal file (`.office-signal-<issue>.json`) is written with `{ "action": "pause" }`, and the dispatch loop handles it at the next step boundary (see dispatch spec)
+
+### Scenario: User resumes the daemon (no args)
 - GIVEN the daemon is paused
-- WHEN `office resume` is invoked
+- WHEN `office resume` is invoked without an issue number
 - THEN the daemon enters active state, performs an immediate check for ready tasks, and notifies that it was resumed
+
+### Scenario: User resumes a paused pipeline
+- GIVEN an issue is labeled `status:paused`
+- WHEN `office resume <issue>` is invoked with an issue number
+- THEN the system re-labels the issue `status:ready` (removing `status:paused`) so it becomes eligible for the next dispatch cycle, which will use the existing step-resume mechanism
+
+## Cancel
+
+### Scenario: User cancels a running pipeline
+- GIVEN a pipeline is running for an issue
+- WHEN `office cancel <issue>` is invoked
+- THEN a signal file (`.office-signal-<issue>.json`) is written with `{ "action": "cancel" }`, and the dispatch loop handles it at the next step boundary (see dispatch spec)
 
 ## Notifications
 
@@ -80,7 +97,38 @@ The dispatch daemon is a background process that continuously dispatches ready t
 - WHEN the signal propagates to the child process
 - THEN the child process terminates, the daemon logs that the dispatch was interrupted, and exits (the interrupted task remains `status:in-progress` for manual triage)
 
+## Usage-Aware Wind-Down
+
+### Scenario: Budget configured
+- GIVEN `daemon.session_budget_minutes` is set in `office.config.yml`
+- WHEN the daemon starts
+- THEN it creates a `UsageBudget` object tracking cumulative wall-clock agent time, passed to each `dispatchIssue` call
+
+### Scenario: Approaching usage threshold
+- GIVEN the daemon is tracking agent time against a session budget
+- WHEN cumulative agent time reaches `usage_threshold_pct` percent of `session_budget_minutes` (checked between pipeline steps and between dispatches)
+- THEN the current pipeline is paused (commit, push, label `status:paused`), the daemon notifies with the reason ("Usage budget: X of Y minutes consumed, threshold Z% reached"), and the daemon transitions to paused state
+
+### Scenario: No budget configured
+- GIVEN `daemon.session_budget_minutes` is not set or is 0
+- WHEN the daemon runs
+- THEN no usage tracking occurs and `UsageBudget.shouldWindDown()` always returns false
+
+### Scenario: Wind-down mid-pipeline
+- GIVEN the daemon's budget threshold is reached while a pipeline step is executing
+- WHEN the step completes and the dispatch loop checks the budget
+- THEN the pipeline exits gracefully: pushes the branch, labels the issue `status:paused`, comments that wind-down was triggered, and returns control to the daemon which then pauses
+
+## Priority Dispatch
+
+### Scenario: Ready queue with mixed priorities
+- GIVEN multiple `status:ready` issues exist
+- WHEN the daemon calls `dispatchNext`
+- THEN issues with `priority:high` are dispatched before unlabeled issues, which are dispatched before `priority:low` issues. Within a tier, issues are ordered by number ascending.
+
 ## Constraints
 - Serial execution only — one task pipeline at a time. Concurrent dispatch is out of scope.
 - The daemon uses the same `dispatchNext` / `dispatchIssue` code path as manual dispatch. No forked logic.
 - State file (`.office-daemon-state.json`) is gitignored.
+- Signal files (`.office-signal-*.json`) are gitignored.
+- `UsageBudget` is an interface passed from daemon to dispatch. Manual dispatch (no daemon) passes no budget, so wind-down is daemon-only.

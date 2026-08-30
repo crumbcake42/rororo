@@ -1,13 +1,38 @@
-import yaml from "js-yaml";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { OfficeConfig } from "./config.js";
-import { dispatchNext } from "./dispatch.js";
-import { listIssuesByLabel } from "./github.js";
+import { dispatchNext, writeSignal, type UsageBudget } from "./dispatch.js";
+import { getIssue, listIssuesByLabel, setLabels } from "./github.js";
 import { notify } from "./notify.js";
 
 const STATE_FILE = ".office-daemon-state.json";
 const DEFAULT_HIBERNATION_INTERVAL_S = 300;
+
+class SessionBudget implements UsageBudget {
+  private budgetMs: number;
+  private thresholdPct: number;
+  private elapsedMs = 0;
+
+  constructor(budgetMinutes: number, thresholdPct: number) {
+    this.budgetMs = budgetMinutes * 60 * 1000;
+    this.thresholdPct = thresholdPct;
+  }
+
+  recordAgentTime(elapsedMs: number): void {
+    this.elapsedMs += elapsedMs;
+  }
+
+  shouldWindDown(): boolean {
+    if (this.budgetMs === 0) return false;
+    return this.elapsedMs / this.budgetMs >= this.thresholdPct / 100;
+  }
+
+  reason(): string {
+    const usedMin = Math.round(this.elapsedMs / 60_000);
+    const budgetMin = Math.round(this.budgetMs / 60_000);
+    return `${usedMin} of ${budgetMin} minutes consumed (threshold: ${this.thresholdPct}%)`;
+  }
+}
 
 type DaemonStatusValue = "active" | "hibernation" | "paused";
 
@@ -45,20 +70,6 @@ function saveState(projectRoot: string, state: DaemonState): void {
   writeFileSync(statePath(projectRoot), JSON.stringify(state, null, 2));
 }
 
-function readHibernationIntervalMs(projectRoot: string): number {
-  const configPath = resolve(projectRoot, "office.config.yml");
-  if (!existsSync(configPath)) return DEFAULT_HIBERNATION_INTERVAL_S * 1000;
-  const raw = yaml.load(readFileSync(configPath, "utf-8")) as Record<
-    string,
-    unknown
-  >;
-  const daemonCfg = raw?.daemon as
-    { hibernation_interval?: number } | undefined;
-  return (
-    (daemonCfg?.hibernation_interval ?? DEFAULT_HIBERNATION_INTERVAL_S) * 1000
-  );
-}
-
 async function notifyDaemon(
   config: OfficeConfig,
   message: string,
@@ -75,18 +86,67 @@ async function notifyDaemon(
   }
 }
 
-export function pause(projectRoot: string): void {
+export function pauseDaemon(projectRoot: string): void {
   const state = loadState(projectRoot);
   state.status = "paused";
   saveState(projectRoot, state);
   console.log("Daemon paused.");
 }
 
-export function resume(projectRoot: string): void {
+export async function pausePipeline(
+  projectRoot: string,
+  issueNumber: number,
+): Promise<void> {
+  const issue = await getIssue(issueNumber);
+  if (!issue.labels.includes("status:in-progress")) {
+    console.warn(
+      `Issue #${issueNumber} is not in-progress. No signal written.`,
+    );
+    return;
+  }
+  writeSignal(projectRoot, issueNumber, "pause");
+  console.log(
+    `Pause signal written for #${issueNumber}. Pipeline will pause at next step boundary.`,
+  );
+}
+
+export async function cancelPipeline(
+  projectRoot: string,
+  issueNumber: number,
+): Promise<void> {
+  const issue = await getIssue(issueNumber);
+  if (!issue.labels.includes("status:in-progress")) {
+    console.warn(
+      `Issue #${issueNumber} is not in-progress. No signal written.`,
+    );
+    return;
+  }
+  writeSignal(projectRoot, issueNumber, "cancel");
+  console.log(
+    `Cancel signal written for #${issueNumber}. Pipeline will stop at next step boundary.`,
+  );
+}
+
+export function resumeDaemon(projectRoot: string): void {
   const state = loadState(projectRoot);
   state.status = "active";
   saveState(projectRoot, state);
   console.log("Daemon resumed — will check for ready tasks immediately.");
+}
+
+export async function resumePipeline(
+  projectRoot: string,
+  issueNumber: number,
+): Promise<void> {
+  const issue = await getIssue(issueNumber);
+  if (!issue.labels.includes("status:paused")) {
+    console.warn(`Issue #${issueNumber} is not paused.`);
+    return;
+  }
+  await setLabels(issueNumber, ["status:ready"], ["status:paused"]);
+  console.log(
+    `Issue #${issueNumber} re-labeled status:ready. Next dispatch cycle will resume the pipeline.`,
+  );
 }
 
 export function isDaemonPaused(projectRoot: string): boolean {
@@ -122,10 +182,28 @@ export async function runDaemon(
   projectRoot: string,
   _pollIntervalMs = 30_000,
 ): Promise<void> {
-  const hibernationIntervalMs = readHibernationIntervalMs(projectRoot);
+  const hibernationIntervalMs =
+    (config.daemon?.hibernation_interval ?? DEFAULT_HIBERNATION_INTERVAL_S) *
+    1000;
+
+  const budgetMinutes = config.daemon?.session_budget_minutes ?? 0;
+  const thresholdPct = config.daemon?.usage_threshold_pct ?? 80;
+  const budget: UsageBudget =
+    budgetMinutes > 0
+      ? new SessionBudget(budgetMinutes, thresholdPct)
+      : {
+          shouldWindDown: () => false,
+          recordAgentTime: () => {},
+          reason: () => "",
+        };
 
   console.log("Agent Office daemon starting...");
   console.log(`Hibernation interval: ${hibernationIntervalMs / 1000}s`);
+  if (budgetMinutes > 0) {
+    console.log(
+      `Usage budget: ${budgetMinutes} minutes (wind-down at ${thresholdPct}%)`,
+    );
+  }
   console.log("Press Ctrl+C to stop.\n");
 
   saveState(projectRoot, {
@@ -163,9 +241,27 @@ export async function runDaemon(
     }
     prevStatus = state.status;
 
+    // Check usage budget before attempting next dispatch.
+    if (budget.shouldWindDown()) {
+      state.status = "paused";
+      saveState(projectRoot, state);
+      await notifyDaemon(
+        config,
+        `Usage budget wind-down: ${budget.reason()}. Daemon paused. Run \`office resume\` to continue.`,
+      );
+      prevStatus = "paused";
+      continue;
+    }
+
     let dispatched = false;
     try {
-      dispatched = await dispatchNext(config, projectRoot);
+      dispatched = await dispatchNext(
+        config,
+        projectRoot,
+        undefined,
+        undefined,
+        budget,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Dispatch error: ${message}`);

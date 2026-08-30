@@ -32,6 +32,14 @@ daemon:
   # In seconds. While actively dispatching, the daemon re-checks immediately.
   hibernation_interval: 300  # 5 minutes
 
+  # Cumulative wall-clock agent time budget for the session, in minutes.
+  # Set to 0 (default) to disable the budget and run without usage limits.
+  session_budget_minutes: 0
+
+  # Percentage of session_budget_minutes at which the daemon pauses and winds
+  # down gracefully rather than starting the next pipeline step.
+  usage_threshold_pct: 80
+
 # --- Dispatch ----------------------------------------------------------------
 # Controls for agent invocation during pipeline dispatch.
 dispatch:

@@ -4,7 +4,12 @@ import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { pause, resume, isDaemonPaused, daemonStatus } from "../src/daemon.js";
+import {
+  pauseDaemon as pause,
+  resumeDaemon as resume,
+  isDaemonPaused,
+  daemonStatus,
+} from "../src/daemon.js";
 
 const STATE_FILE = ".office-daemon-state.json";
 

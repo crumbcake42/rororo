@@ -1,4 +1,11 @@
-import { readFileSync, existsSync, readdirSync, mkdirSync } from "node:fs";
+import {
+  readFileSync,
+  existsSync,
+  readdirSync,
+  mkdirSync,
+  writeFileSync,
+  unlinkSync,
+} from "node:fs";
 import { execSync, spawn } from "node:child_process";
 import { resolve } from "node:path";
 import yaml from "js-yaml";
@@ -42,7 +49,63 @@ export interface Pipeline {
   steps: PipelineStep[];
 }
 
+export interface UsageBudget {
+  shouldWindDown(): boolean;
+  recordAgentTime(elapsedMs: number): void;
+  reason(): string;
+}
+
+export type PipelineSignal = "pause" | "cancel";
+
+interface SignalFile {
+  action: PipelineSignal;
+}
+
+function signalFilePath(projectRoot: string, issueNumber: number): string {
+  return resolve(projectRoot, `.office-signal-${issueNumber}.json`);
+}
+
+export function writeSignal(
+  projectRoot: string,
+  issueNumber: number,
+  action: PipelineSignal,
+): void {
+  const payload: SignalFile = { action };
+  writeFileSync(
+    signalFilePath(projectRoot, issueNumber),
+    JSON.stringify(payload),
+  );
+}
+
+function readAndConsumeSignal(
+  projectRoot: string,
+  issueNumber: number,
+): PipelineSignal | null {
+  const path = signalFilePath(projectRoot, issueNumber);
+  if (!existsSync(path)) return null;
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf-8")) as SignalFile;
+    unlinkSync(path);
+    return raw.action ?? null;
+  } catch {
+    return null;
+  }
+}
+
 const WORKTREE_DIR = ".worktrees";
+
+const PRIORITY_ORDER: Record<string, number> = {
+  "priority:high": 0,
+  "priority:low": 2,
+};
+const PRIORITY_NORMAL = 1;
+
+function getPriorityRank(labels: string[]): number {
+  for (const label of labels) {
+    if (label in PRIORITY_ORDER) return PRIORITY_ORDER[label];
+  }
+  return PRIORITY_NORMAL;
+}
 
 function remoteBranchExists(projectRoot: string, branch: string): boolean {
   try {
@@ -503,6 +566,8 @@ export async function dispatchNext(
   config: OfficeConfig,
   projectRoot: string,
   issueNumber?: number,
+  priority?: "high" | "low",
+  budget?: UsageBudget,
 ): Promise<boolean> {
   let issue: GitHubIssue;
 
@@ -513,12 +578,24 @@ export async function dispatchNext(
       console.log(`Issue #${issueNumber} is not labeled status:ready.`);
       return false;
     }
+    if (priority) {
+      const priorityLabel = `priority:${priority}`;
+      if (!issue.labels.includes(priorityLabel)) {
+        await setLabels(issue.number, [priorityLabel], []);
+        issue.labels.push(priorityLabel);
+      }
+    }
   } else {
     const readyIssues = await listIssuesByLabel("status:ready");
     if (readyIssues.length === 0) {
       console.log("No tasks in status:ready.");
       return false;
     }
+    readyIssues.sort((a, b) => {
+      const rankDiff = getPriorityRank(a.labels) - getPriorityRank(b.labels);
+      if (rankDiff !== 0) return rankDiff;
+      return a.number - b.number;
+    });
     issue = readyIssues[0];
   }
 
@@ -529,7 +606,7 @@ export async function dispatchNext(
     return false;
   }
 
-  await dispatchIssue(config, projectRoot, issue, pipelineName);
+  await dispatchIssue(config, projectRoot, issue, pipelineName, budget);
   return true;
 }
 
@@ -538,6 +615,7 @@ export async function dispatchIssue(
   projectRoot: string,
   issue: GitHubIssue,
   pipelineName: string,
+  budget?: UsageBudget,
 ): Promise<void> {
   const pipeline = loadPipeline(projectRoot, pipelineName);
   const baseBranch = getBaseBranch(config);
@@ -627,9 +705,47 @@ export async function dispatchIssue(
         i,
       );
 
+      const stepStart = Date.now();
       await invokeAgent(config, projectRoot, worktree.path, step, context);
+      const stepElapsed = Date.now() - stepStart;
+      budget?.recordAgentTime(stepElapsed);
 
       commitStep(worktree.path, i + 1, pipeline.steps.length, step.role);
+
+      // Check for pause/cancel signal or usage wind-down before the next step.
+      if (i < pipeline.steps.length - 1) {
+        const signal = readAndConsumeSignal(projectRoot, issue.number);
+        const windDown = budget?.shouldWindDown() ?? false;
+
+        if (signal === "cancel" || signal === "pause" || windDown) {
+          const isPause = signal === "pause" || windDown;
+          const pausePoint = `step ${i + 1} of ${pipeline.steps.length} (${step.role})`;
+          const commentReason = windDown
+            ? `Usage budget wind-down triggered: ${budget!.reason()}. Paused after ${pausePoint}.`
+            : signal === "pause"
+              ? `Paused by user request after ${pausePoint}.`
+              : `Cancelled by user request after ${pausePoint}.`;
+
+          pushBranchOnFailure(worktree.path, branch, baseBranch);
+
+          const newLabel = isPause
+            ? "status:paused"
+            : "status:blocked-unclassified";
+          await setLabels(issue.number, [newLabel], ["status:in-progress"]);
+          await addComment(issue.number, commentReason);
+          await notify(config, {
+            issueNumber: issue.number,
+            title: issue.title,
+            message: commentReason,
+            url: issue.html_url,
+          });
+
+          console.log(
+            `\n${isPause ? "Paused" : "Cancelled"} pipeline for #${issue.number} after ${pausePoint}.`,
+          );
+          return;
+        }
+      }
     }
 
     console.log(`\nPushing branch ${branch} to origin...`);

@@ -238,7 +238,7 @@ function assembleContext(
   return parts.join("\n");
 }
 
-function invokeAgent(
+export function invokeAgent(
   config: OfficeConfig,
   projectRoot: string,
   worktreePath: string,

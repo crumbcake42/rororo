@@ -9,6 +9,7 @@ import { getStatus, formatStatus } from "./status.js";
 import { generateStandup, launchInteractiveStandup } from "./standup.js";
 import { daemonStatus, pause, resume, runDaemon } from "./daemon.js";
 import { launchCreateSession } from "./create.js";
+import { reviewPR } from "./review.js";
 
 const program = new Command();
 const projectRoot = process.cwd();
@@ -35,6 +36,28 @@ program
       console.log(
         "No tasks ready for dispatch. Create an issue with status:ready to get started.",
       );
+    }
+  });
+
+program
+  .command("review <pr>")
+  .description("Review a PR for semantic correctness using the reviewer agent")
+  .option("--comment", "Post findings as a PR comment in addition to printing")
+  .action(async (pr: string, options: { comment?: boolean }) => {
+    const config = loadConfig(projectRoot);
+    const prNumber = parseInt(pr, 10);
+    if (isNaN(prNumber)) {
+      console.error(`Invalid PR number: ${pr}`);
+      process.exit(1);
+    }
+    try {
+      await reviewPR(config, projectRoot, prNumber, {
+        comment: options.comment ?? false,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Review failed: ${message}`);
+      process.exit(1);
     }
   });
 

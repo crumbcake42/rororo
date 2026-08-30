@@ -22,13 +22,18 @@ program
   .version("0.1.0");
 
 program
-  .command("dispatch")
+  .command("dispatch [issue]")
   .description(
-    "Dispatch the next ready task to an agent pipeline"
+    "Dispatch a ready task to an agent pipeline. Optionally specify an issue number."
   )
-  .action(async () => {
+  .action(async (issue?: string) => {
     const config = loadConfig(projectRoot);
-    const dispatched = await dispatchNext(config, projectRoot);
+    const issueNumber = issue ? parseInt(issue, 10) : undefined;
+    if (issue && isNaN(issueNumber!)) {
+      console.error(`Invalid issue number: ${issue}`);
+      process.exit(1);
+    }
+    const dispatched = await dispatchNext(config, projectRoot, issueNumber);
     if (!dispatched) {
       console.log(
         "No tasks ready for dispatch. Create an issue with status:ready to get started."

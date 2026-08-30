@@ -1,8 +1,6 @@
-import { readFileSync, writeFileSync, unlinkSync, existsSync, readdirSync } from "node:fs";
-import { execSync } from "node:child_process";
-import { resolve, join } from "node:path";
-import { tmpdir } from "node:os";
-import { randomBytes } from "node:crypto";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { execSync, spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 import yaml from "js-yaml";
 import type { OfficeConfig } from "./config.js";
 import { getBaseBranch, getModelForRole } from "./config.js";
@@ -132,13 +130,6 @@ function assembleContext(
   return parts.join("\n");
 }
 
-function writeTempPrompt(content: string): string {
-  const filename = `office-prompt-${randomBytes(8).toString("hex")}.md`;
-  const filepath = join(tmpdir(), filename);
-  writeFileSync(filepath, content, "utf-8");
-  return filepath;
-}
-
 function invokeAgent(
   config: OfficeConfig,
   projectRoot: string,
@@ -159,39 +150,32 @@ function invokeAgent(
     throw new Error(`Agent definition not found: ${agentFile}`);
   }
 
-  const promptFile = writeTempPrompt(contextPrompt);
-
   const args = [
-    "claude",
-    "--agent", step.role,
     "--model", model,
     "--print",
     "--dangerously-skip-permissions",
-    "--prompt-file", `"${promptFile}"`,
+    "--append-system-prompt-file", agentFile,
   ];
 
   console.log(
     `Invoking ${step.role} agent (${model}) in ${worktreePath}...`
   );
 
-  try {
-    const result = execSync(args.join(" "), {
-      cwd: worktreePath,
-      stdio: captureOutput ? "pipe" : "inherit",
-      timeout: 600_000,
-    });
-    return captureOutput && result ? result.toString("utf-8") : "";
-  } catch (error) {
+  const result = spawnSync("claude", args, {
+    cwd: worktreePath,
+    input: contextPrompt,
+    stdio: captureOutput ? ["pipe", "pipe", "inherit"] : ["pipe", "inherit", "inherit"],
+    timeout: 600_000,
+    encoding: captureOutput ? "utf-8" : undefined,
+  });
+
+  if (result.status !== 0) {
     throw new Error(
-      `Agent ${step.role} failed: ${error instanceof Error ? error.message : String(error)}`
+      `Agent ${step.role} failed with exit code ${result.status}`
     );
-  } finally {
-    try {
-      unlinkSync(promptFile);
-    } catch {
-      // Best-effort cleanup
-    }
   }
+
+  return captureOutput && result.stdout ? String(result.stdout) : "";
 }
 
 interface DebateRound {
@@ -342,16 +326,27 @@ async function runAdversarialDebate(
 
 export async function dispatchNext(
   config: OfficeConfig,
-  projectRoot: string
+  projectRoot: string,
+  issueNumber?: number
 ): Promise<boolean> {
-  const readyIssues = await listIssuesByLabel("status:ready");
+  let issue: GitHubIssue;
 
-  if (readyIssues.length === 0) {
-    console.log("No tasks in status:ready.");
-    return false;
+  if (issueNumber) {
+    issue = await getIssue(issueNumber);
+    const hasReady = issue.labels.includes("status:ready");
+    if (!hasReady) {
+      console.log(`Issue #${issueNumber} is not labeled status:ready.`);
+      return false;
+    }
+  } else {
+    const readyIssues = await listIssuesByLabel("status:ready");
+    if (readyIssues.length === 0) {
+      console.log("No tasks in status:ready.");
+      return false;
+    }
+    issue = readyIssues[0];
   }
 
-  const issue = readyIssues[0];
   const pipelineName = getPipelineLabel(issue);
 
   if (!pipelineName) {

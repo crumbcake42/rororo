@@ -66,17 +66,13 @@ role_models:
 # All gates must pass before a PR can merge.
 quality_gates:
   test:
-    description: "Run the test suite"
-    command: ""         # e.g. "npm test" or "pytest"
+    command: "npm test"
   lint:
-    description: "Run the linter"
-    command: ""         # e.g. "npx eslint . --max-warnings 0" or "ruff check ."
+    command: "npx eslint . --max-warnings 0"
   typecheck:
-    description: "Run type checking"
-    command: ""         # e.g. "npx tsc --noEmit" or "mypy ."
+    command: "npx tsc --noEmit"
   format_check:
-    description: "Verify code formatting"
-    command: ""         # e.g. "npx prettier --check ." or "ruff format --check ."
+    command: "npx prettier --check ."
 
 # --- Adversarial Review ------------------------------------------------------
 # Controls for the architecture-decision pipeline's debate format.

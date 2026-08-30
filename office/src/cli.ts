@@ -26,6 +26,11 @@ program
   )
   .action(async (issue?: string) => {
     const config = loadConfig(projectRoot);
+    if (config.dispatch_mode === "daemon") {
+      console.warn(
+        "Advisory: dispatch_mode is set to 'daemon' — the daemon should be managing dispatch. Run `office start` instead, or change dispatch_mode to 'manual'.",
+      );
+    }
     const issueNumber = issue ? parseInt(issue, 10) : undefined;
     if (issue && isNaN(issueNumber!)) {
       console.error(`Invalid issue number: ${issue}`);
@@ -119,6 +124,11 @@ program
   .option("--interval <seconds>", "Poll interval in seconds", "30")
   .action(async (options: { interval: string }) => {
     const config = loadConfig(projectRoot);
+    if (config.dispatch_mode === "manual") {
+      console.warn(
+        "Advisory: dispatch_mode is set to 'manual' — the daemon is starting anyway. Change dispatch_mode to 'daemon' in office.config.yml to suppress this warning.",
+      );
+    }
     const intervalMs = parseInt(options.interval, 10) * 1000;
     await runDaemon(config, projectRoot, intervalMs);
   });

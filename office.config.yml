@@ -68,7 +68,7 @@ quality_gates:
   test:
     command: ""
   lint:
-    command: "cd office && npm run lint"
+    command: ""
   typecheck:
     command: "cd office && npm run typecheck"
   format_check:

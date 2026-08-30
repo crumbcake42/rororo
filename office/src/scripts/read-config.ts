@@ -25,7 +25,7 @@ try {
   }
 } catch (error) {
   console.error(
-    `Failed to read config: ${error instanceof Error ? error.message : String(error)}`
+    `Failed to read config: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exit(1);
 }

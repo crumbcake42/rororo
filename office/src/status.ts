@@ -75,7 +75,10 @@ function formatIssue(issue: GitHubIssue): string {
   return `  #${issue.number} — ${issue.title}${pipelineTag}`;
 }
 
-export function formatStatus(report: StatusReport, projectRoot: string): string {
+export function formatStatus(
+  report: StatusReport,
+  projectRoot: string,
+): string {
   const lines: string[] = [];
   const worktrees = listWorktrees(projectRoot);
 

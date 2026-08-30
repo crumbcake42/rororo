@@ -29,7 +29,8 @@ Parse the JSON output.
 3. **Be ready to drill in.** The user will ask follow-up questions. Answer from the data, or read the relevant files:
    - Specific task details → read the GitHub Issue via `gh issue view <number>`
    - Architecture questions → read `ARCHITECTURE.md`
-   - Decision history → read `DECISIONS.md`
+   - Design decisions → read `ARCHITECTURE.md` and relevant `office/specs/`
+   - Known anti-patterns → read `PITFALLS.md`
    - Agent role details → read `.claude/agents/<role>.md`
 
 4. **Offer next steps.** Based on the standup, suggest:

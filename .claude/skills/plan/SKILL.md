@@ -18,7 +18,8 @@ node office/dist/scripts/list-ready.js
 
 Also read:
 - `ARCHITECTURE.md` — current system design
-- `DECISIONS.md` — existing constraints and decisions
+- `office/specs/` — existing requirements and specifications
+- `PITFALLS.md` — known anti-patterns to avoid
 - Recent completion history: `gh issue list --state closed --limit 10 --json number,title,labels`
 
 2. **Present the current picture.** Briefly summarize:

@@ -41,7 +41,8 @@ If the task has no dependencies and is ready to dispatch, use `status:ready` ins
 
 Before drafting, read:
 - `ARCHITECTURE.md` — current system design, to identify scope accurately
-- `DECISIONS.md` — existing ADRs, to check for relevant constraints
+- `office/specs/` — existing requirements, to check for relevant constraints
+- `PITFALLS.md` — known anti-patterns to avoid
 
 ## Notes
 

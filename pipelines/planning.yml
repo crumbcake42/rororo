@@ -9,7 +9,7 @@ steps:
     description: "Read backlog, decisions, architecture, and recent completions. Produce prioritized task proposals."
     inputs:
       - All GitHub Issues (backlog)
-      - DECISIONS.md
+      - Relevant office/specs/
       - ARCHITECTURE.md
       - Recent closed issues and merged PRs
     outputs:

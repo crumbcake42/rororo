@@ -10,7 +10,7 @@ import { createIssue } from "./github.js";
 export async function launchCreateSession(
   config: OfficeConfig,
   projectRoot: string,
-  topic?: string
+  topic?: string,
 ): Promise<void> {
   const topicLine = topic
     ? `The user wants to work on: "${topic}".`
@@ -57,7 +57,11 @@ export async function launchCreateSession(
   try {
     const result = execSync(
       `claude --agent pm --model ${model} --output-format json --prompt-file "${promptFile}"`,
-      { cwd: projectRoot, stdio: ["inherit", "pipe", "inherit"], timeout: 600_000 }
+      {
+        cwd: projectRoot,
+        stdio: ["inherit", "pipe", "inherit"],
+        timeout: 600_000,
+      },
     );
     output = result.toString("utf-8");
   } catch {
@@ -72,7 +76,7 @@ export async function launchCreateSession(
   }
 
   const issueMatch = output.match(
-    /===ISSUE_START===\s*\nPIPELINE:\s*(.+)\nTITLE:\s*(.+)\nBODY:\n([\s\S]*?)\n===ISSUE_END===/
+    /===ISSUE_START===\s*\nPIPELINE:\s*(.+)\nTITLE:\s*(.+)\nBODY:\n([\s\S]*?)\n===ISSUE_END===/,
   );
 
   if (!issueMatch) {
@@ -90,7 +94,7 @@ export async function launchCreateSession(
     console.log(`URL: ${issue.html_url}`);
   } catch (error) {
     console.error(
-      `Failed to create issue: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to create issue: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }

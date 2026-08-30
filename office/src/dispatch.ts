@@ -1,8 +1,6 @@
-import { readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
-import { execSync } from "node:child_process";
-import { resolve, join } from "node:path";
-import { tmpdir } from "node:os";
-import { randomBytes } from "node:crypto";
+import { readFileSync, existsSync, readdirSync, mkdirSync } from "node:fs";
+import { execSync, spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 import yaml from "js-yaml";
 import type { OfficeConfig } from "./config.js";
 import { getBaseBranch, getModelForRole } from "./config.js";
@@ -20,6 +18,7 @@ import {
   branchName,
   createWorktree,
   cleanupWorktree,
+  type WorktreeInfo,
 } from "./worktree.js";
 import { notify } from "./notify.js";
 
@@ -43,21 +42,123 @@ export interface Pipeline {
   steps: PipelineStep[];
 }
 
-function loadPipeline(
+const WORKTREE_DIR = ".worktrees";
+
+function remoteBranchExists(projectRoot: string, branch: string): boolean {
+  try {
+    const output = execSync(`git ls-remote --heads origin "${branch}"`, {
+      cwd: projectRoot,
+      stdio: "pipe",
+      encoding: "utf-8",
+    });
+    return output.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function createWorktreeFromRemote(
   projectRoot: string,
-  pipelineName: string
-): Pipeline {
-  const pipelinePath = resolve(
-    projectRoot,
-    "pipelines",
-    `${pipelineName}.yml`
+  branch: string,
+  issueNumber: number,
+): WorktreeInfo {
+  const worktreeBase = resolve(projectRoot, WORKTREE_DIR);
+  if (!existsSync(worktreeBase)) {
+    mkdirSync(worktreeBase, { recursive: true });
+  }
+
+  const dirName = branch.replace(/\//g, "-");
+  const worktreePath = resolve(worktreeBase, dirName);
+
+  if (existsSync(worktreePath)) {
+    throw new Error(
+      `Worktree already exists at ${worktreePath}. Clean it up first.`,
+    );
+  }
+
+  execSync(
+    `git worktree add -B "${branch}" "${worktreePath}" "origin/${branch}"`,
+    { cwd: projectRoot, stdio: "pipe" },
   );
+
+  return { path: worktreePath, branch, issueNumber };
+}
+
+function getCompletedStepIndices(worktreePath: string): Set<number> {
+  try {
+    const log = execSync("git log --format=%s", {
+      cwd: worktreePath,
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    const completed = new Set<number>();
+    for (const subject of log.split("\n")) {
+      const match = subject.match(/^step (\d+)\/\d+:/);
+      if (match) {
+        completed.add(parseInt(match[1], 10) - 1);
+      }
+    }
+    return completed;
+  } catch {
+    return new Set();
+  }
+}
+
+function commitStep(
+  worktreePath: string,
+  stepNumber: number,
+  totalSteps: number,
+  role: string,
+): void {
+  const status = execSync("git status --porcelain", {
+    cwd: worktreePath,
+    encoding: "utf-8",
+    stdio: "pipe",
+  });
+  if (status.trim().length === 0) {
+    console.log(
+      `  No changes from step ${stepNumber}/${totalSteps} (${role}) — skipping commit.`,
+    );
+    return;
+  }
+  execSync("git add -A", { cwd: worktreePath, stdio: "pipe" });
+  execSync(`git commit -m "step ${stepNumber}/${totalSteps}: ${role}"`, {
+    cwd: worktreePath,
+    stdio: "pipe",
+  });
+  console.log(`  Committed step ${stepNumber}/${totalSteps}: ${role}.`);
+}
+
+function pushBranchOnFailure(
+  worktreePath: string,
+  branch: string,
+  baseBranch: string,
+): void {
+  try {
+    const ahead = execSync(`git log "origin/${baseBranch}..HEAD" --oneline`, {
+      cwd: worktreePath,
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    if (ahead.trim().length === 0) {
+      return;
+    }
+    console.log(`Pushing branch ${branch} to preserve completed steps...`);
+    execSync(`git push -u origin "${branch}"`, {
+      cwd: worktreePath,
+      stdio: "pipe",
+    });
+  } catch {
+    // Best-effort
+  }
+}
+
+function loadPipeline(projectRoot: string, pipelineName: string): Pipeline {
+  const pipelinePath = resolve(projectRoot, "pipelines", `${pipelineName}.yml`);
   if (!existsSync(pipelinePath)) {
     throw new Error(`Pipeline definition not found: ${pipelinePath}`);
   }
-  return yaml.load(
-    readFileSync(pipelinePath, "utf-8")
-  ) as Pipeline;
+  return yaml.load(readFileSync(pipelinePath, "utf-8")) as Pipeline;
 }
 
 function assembleContext(
@@ -65,7 +166,7 @@ function assembleContext(
   issue: GitHubIssue,
   comments: Array<{ body: string; user: string }>,
   pipeline: Pipeline,
-  stepIndex: number
+  stepIndex: number,
 ): string {
   const parts: string[] = [];
 
@@ -87,42 +188,54 @@ function assembleContext(
     parts.push("");
   }
 
-  const decisionsPath = resolve(projectRoot, "DECISIONS.md");
-  if (existsSync(decisionsPath)) {
-    parts.push("## Decisions\n");
-    parts.push(readFileSync(decisionsPath, "utf-8"));
+  const pitfallsPath = resolve(projectRoot, "PITFALLS.md");
+  if (existsSync(pitfallsPath)) {
+    parts.push("## Pitfalls\n");
+    parts.push(readFileSync(pitfallsPath, "utf-8"));
     parts.push("");
+  }
+
+  const specsDir = resolve(projectRoot, "office", "specs");
+  if (existsSync(specsDir)) {
+    const specDirs = readdirSync(specsDir, { withFileTypes: true }).filter(
+      (d) => d.isDirectory(),
+    );
+    for (const dir of specDirs) {
+      const specFile = resolve(specsDir, dir.name, "spec.md");
+      if (existsSync(specFile)) {
+        parts.push(`## Spec: ${dir.name}\n`);
+        parts.push(readFileSync(specFile, "utf-8"));
+        parts.push("");
+      }
+    }
   }
 
   parts.push("## Pipeline Context\n");
   parts.push(`Pipeline: ${pipeline.name}`);
   parts.push(
-    `Step ${stepIndex + 1} of ${pipeline.steps.length}: ${pipeline.steps[stepIndex].role}`
+    `Step ${stepIndex + 1} of ${pipeline.steps.length}: ${pipeline.steps[stepIndex].role}`,
   );
   parts.push(`Description: ${pipeline.steps[stepIndex].description}`);
 
   if (stepIndex > 0) {
     parts.push("\nPrevious steps:");
     for (let i = 0; i < stepIndex; i++) {
-      parts.push(`  ${i + 1}. ${pipeline.steps[i].role} — ${pipeline.steps[i].description}`);
+      parts.push(
+        `  ${i + 1}. ${pipeline.steps[i].role} — ${pipeline.steps[i].description}`,
+      );
     }
   }
 
   if (stepIndex < pipeline.steps.length - 1) {
     parts.push("\nNext steps:");
     for (let i = stepIndex + 1; i < pipeline.steps.length; i++) {
-      parts.push(`  ${i + 1}. ${pipeline.steps[i].role} — ${pipeline.steps[i].description}`);
+      parts.push(
+        `  ${i + 1}. ${pipeline.steps[i].role} — ${pipeline.steps[i].description}`,
+      );
     }
   }
 
   return parts.join("\n");
-}
-
-function writeTempPrompt(content: string): string {
-  const filename = `office-prompt-${randomBytes(8).toString("hex")}.md`;
-  const filepath = join(tmpdir(), filename);
-  writeFileSync(filepath, content, "utf-8");
-  return filepath;
 }
 
 function invokeAgent(
@@ -131,53 +244,48 @@ function invokeAgent(
   worktreePath: string,
   step: PipelineStep,
   contextPrompt: string,
-  captureOutput = false
+  captureOutput = false,
 ): string {
   const model = getModelForRole(config, step.role);
   const agentFile = resolve(
     projectRoot,
     ".claude",
     "agents",
-    `${step.role}.md`
+    `${step.role}.md`,
   );
 
   if (!existsSync(agentFile)) {
     throw new Error(`Agent definition not found: ${agentFile}`);
   }
 
-  const promptFile = writeTempPrompt(contextPrompt);
-
   const args = [
-    "claude",
-    "--agent", step.role,
-    "--model", model,
+    "--model",
+    model,
     "--print",
     "--dangerously-skip-permissions",
-    "--prompt-file", `"${promptFile}"`,
+    "--append-system-prompt-file",
+    agentFile,
   ];
 
-  console.log(
-    `Invoking ${step.role} agent (${model}) in ${worktreePath}...`
-  );
+  console.log(`Invoking ${step.role} agent (${model}) in ${worktreePath}...`);
 
-  try {
-    const result = execSync(args.join(" "), {
-      cwd: worktreePath,
-      stdio: captureOutput ? "pipe" : "inherit",
-      timeout: 600_000,
-    });
-    return captureOutput && result ? result.toString("utf-8") : "";
-  } catch (error) {
+  const result = spawnSync("claude", args, {
+    cwd: worktreePath,
+    input: contextPrompt,
+    stdio: captureOutput
+      ? ["pipe", "pipe", "inherit"]
+      : ["pipe", "inherit", "inherit"],
+    timeout: 600_000,
+    encoding: captureOutput ? "utf-8" : undefined,
+  });
+
+  if (result.status !== 0) {
     throw new Error(
-      `Agent ${step.role} failed: ${error instanceof Error ? error.message : String(error)}`
+      `Agent ${step.role} failed with exit code ${result.status}`,
     );
-  } finally {
-    try {
-      unlinkSync(promptFile);
-    } catch {
-      // Best-effort cleanup
-    }
   }
+
+  return captureOutput && result.stdout ? String(result.stdout) : "";
 }
 
 interface DebateRound {
@@ -202,7 +310,7 @@ async function runAdversarialDebate(
   worktreePath: string,
   issue: GitHubIssue,
   comments: Array<{ body: string; user: string }>,
-  pipeline: Pipeline
+  pipeline: Pipeline,
 ): Promise<void> {
   const maxRounds = config.adversarial.max_rounds;
   const directives = config.adversarial.architect_directives;
@@ -214,7 +322,7 @@ async function runAdversarialDebate(
 
   if (!stepA || !stepB || !pmStep) {
     throw new Error(
-      "Adversarial pipeline must have instance A, instance B, and a PM step"
+      "Adversarial pipeline must have instance A, instance B, and a PM step",
     );
   }
 
@@ -226,7 +334,7 @@ async function runAdversarialDebate(
     issue,
     comments,
     pipeline,
-    0
+    0,
   );
 
   const rounds: DebateRound[] = [];
@@ -234,16 +342,13 @@ async function runAdversarialDebate(
   for (let round = 1; round <= maxRounds; round++) {
     console.log(`\n=== Debate Round ${round}/${maxRounds} ===`);
 
-    const priorTranscript =
-      rounds.length > 0 ? formatTranscript(rounds) : "";
+    const priorTranscript = rounds.length > 0 ? formatTranscript(rounds) : "";
 
     const contextA = [
       baseContext,
       `\n## Your Directive\n\n${directiveA}`,
       `\nYou are Architect A in round ${round} of ${maxRounds}.`,
-      priorTranscript
-        ? `\n## Prior Debate Rounds\n\n${priorTranscript}`
-        : "",
+      priorTranscript ? `\n## Prior Debate Rounds\n\n${priorTranscript}` : "",
     ].join("\n");
 
     console.log(`\n--- Architect A (Round ${round}) ---`);
@@ -253,16 +358,14 @@ async function runAdversarialDebate(
       worktreePath,
       stepA,
       contextA,
-      true
+      true,
     );
 
     const contextB = [
       baseContext,
       `\n## Your Directive\n\n${directiveB}`,
       `\nYou are Architect B in round ${round} of ${maxRounds}.`,
-      priorTranscript
-        ? `\n## Prior Debate Rounds\n\n${priorTranscript}`
-        : "",
+      priorTranscript ? `\n## Prior Debate Rounds\n\n${priorTranscript}` : "",
       `\n## Architect A's Argument (Round ${round})\n\n${outputA}`,
     ].join("\n");
 
@@ -273,7 +376,7 @@ async function runAdversarialDebate(
       worktreePath,
       stepB,
       contextB,
-      true
+      true,
     );
 
     rounds.push({ round, instanceA: outputA, instanceB: outputB });
@@ -297,24 +400,21 @@ async function runAdversarialDebate(
     worktreePath,
     pmStep,
     pmContext,
-    true
+    true,
   );
 
-  await addComment(
-    issue.number,
-    `## PM Synthesis\n\n${synthesis}`
-  );
+  await addComment(issue.number, `## PM Synthesis\n\n${synthesis}`);
   console.log("PM synthesis posted to issue.");
 
   if (userStep) {
     await setLabels(
       issue.number,
       ["status:blocked-human"],
-      ["status:in-progress"]
+      ["status:in-progress"],
     );
     await addComment(
       issue.number,
-      `The adversarial debate is complete and the PM has provided a synthesis above.\n\nPlease review and respond with your decision. This will be logged in DECISIONS.md.`
+      `The adversarial debate is complete and the PM has provided a synthesis above.\n\nPlease review and respond with your decision. The architect will update ARCHITECTURE.md and the relevant OpenSpec spec to reflect the approved decision.`,
     );
     await notify(config, {
       issueNumber: issue.number,
@@ -328,22 +428,31 @@ async function runAdversarialDebate(
 
 export async function dispatchNext(
   config: OfficeConfig,
-  projectRoot: string
+  projectRoot: string,
+  issueNumber?: number,
 ): Promise<boolean> {
-  const readyIssues = await listIssuesByLabel("status:ready");
+  let issue: GitHubIssue;
 
-  if (readyIssues.length === 0) {
-    console.log("No tasks in status:ready.");
-    return false;
+  if (issueNumber) {
+    issue = await getIssue(issueNumber);
+    const hasReady = issue.labels.includes("status:ready");
+    if (!hasReady) {
+      console.log(`Issue #${issueNumber} is not labeled status:ready.`);
+      return false;
+    }
+  } else {
+    const readyIssues = await listIssuesByLabel("status:ready");
+    if (readyIssues.length === 0) {
+      console.log("No tasks in status:ready.");
+      return false;
+    }
+    issue = readyIssues[0];
   }
 
-  const issue = readyIssues[0];
   const pipelineName = getPipelineLabel(issue);
 
   if (!pipelineName) {
-    console.log(
-      `Issue #${issue.number} has no pipeline label. Skipping.`
-    );
+    console.log(`Issue #${issue.number} has no pipeline label. Skipping.`);
     return false;
   }
 
@@ -355,30 +464,28 @@ export async function dispatchIssue(
   config: OfficeConfig,
   projectRoot: string,
   issue: GitHubIssue,
-  pipelineName: string
+  pipelineName: string,
 ): Promise<void> {
   const pipeline = loadPipeline(projectRoot, pipelineName);
   const baseBranch = getBaseBranch(config);
   const branch = branchName(issue.number, issue.title, pipelineName);
 
-  console.log(
-    `\nDispatching #${issue.number}: ${issue.title}`
-  );
+  console.log(`\nDispatching #${issue.number}: ${issue.title}`);
   console.log(`Pipeline: ${pipelineName} (${pipeline.steps.length} steps)`);
   console.log(`Branch: ${branch}\n`);
 
-  await setLabels(
-    issue.number,
-    ["status:in-progress"],
-    ["status:ready"]
-  );
+  await setLabels(issue.number, ["status:in-progress"], ["status:ready"]);
 
-  const worktree = createWorktree(
-    projectRoot,
-    baseBranch,
-    branch,
-    issue.number
-  );
+  execSync("git fetch origin", { cwd: projectRoot, stdio: "pipe" });
+  const resuming = remoteBranchExists(projectRoot, branch);
+
+  const worktree = resuming
+    ? createWorktreeFromRemote(projectRoot, branch, issue.number)
+    : createWorktree(projectRoot, baseBranch, branch, issue.number);
+
+  if (resuming) {
+    console.log(`Resuming pipeline from existing branch ${branch}.`);
+  }
 
   try {
     const comments = await getIssueComments(issue.number);
@@ -390,9 +497,17 @@ export async function dispatchIssue(
         worktree.path,
         issue,
         comments,
-        pipeline
+        pipeline,
       );
       return;
+    }
+
+    const completedSteps = resuming
+      ? getCompletedStepIndices(worktree.path)
+      : new Set<number>();
+
+    if (completedSteps.size > 0) {
+      console.log(`Skipping ${completedSteps.size} already-completed step(s).`);
     }
 
     for (let i = 0; i < pipeline.steps.length; i++) {
@@ -402,11 +517,11 @@ export async function dispatchIssue(
         await setLabels(
           issue.number,
           ["status:blocked-human"],
-          ["status:in-progress"]
+          ["status:in-progress"],
         );
         await addComment(
           issue.number,
-          `Pipeline step ${i + 1} requires user input: ${step.description}\n\nPlease respond on this issue to continue.`
+          `Pipeline step ${i + 1} requires user input: ${step.description}\n\nPlease respond on this issue to continue.`,
         );
         await notify(config, {
           issueNumber: issue.number,
@@ -415,13 +530,20 @@ export async function dispatchIssue(
           url: issue.html_url,
         });
         console.log(
-          `Blocked on user input at step ${i + 1}. Respond on the issue to continue.`
+          `Blocked on user input at step ${i + 1}. Respond on the issue to continue.`,
         );
         return;
       }
 
+      if (completedSteps.has(i)) {
+        console.log(
+          `\n--- Step ${i + 1}/${pipeline.steps.length}: ${step.role} (already completed, skipping) ---`,
+        );
+        continue;
+      }
+
       console.log(
-        `\n--- Step ${i + 1}/${pipeline.steps.length}: ${step.role} ---`
+        `\n--- Step ${i + 1}/${pipeline.steps.length}: ${step.role} ---`,
       );
 
       const context = assembleContext(
@@ -429,16 +551,12 @@ export async function dispatchIssue(
         issue,
         comments,
         pipeline,
-        i
+        i,
       );
 
-      invokeAgent(
-        config,
-        projectRoot,
-        worktree.path,
-        step,
-        context
-      );
+      invokeAgent(config, projectRoot, worktree.path, step, context);
+
+      commitStep(worktree.path, i + 1, pipeline.steps.length, step.role);
     }
 
     console.log(`\nPushing branch ${branch} to origin...`);
@@ -464,27 +582,22 @@ export async function dispatchIssue(
     const pr = await createPR(branch, baseBranch, prTitle, prBody);
     console.log(`PR created: ${pr.html_url}`);
 
-    await setLabels(
-      issue.number,
-      ["status:review"],
-      ["status:in-progress"]
-    );
+    await setLabels(issue.number, ["status:review"], ["status:in-progress"]);
 
-    console.log(
-      `\nPipeline complete for #${issue.number}. Status: review.`
-    );
+    console.log(`\nPipeline complete for #${issue.number}. Status: review.`);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
+
+    pushBranchOnFailure(worktree.path, branch, baseBranch);
 
     await addComment(
       issue.number,
-      `Pipeline failed at a step:\n\n\`\`\`\n${message}\n\`\`\``
+      `Pipeline failed at a step:\n\n\`\`\`\n${message}\n\`\`\``,
     );
     await setLabels(
       issue.number,
       ["status:blocked-unclassified"],
-      ["status:in-progress"]
+      ["status:in-progress"],
     );
     await notify(config, {
       issueNumber: issue.number,

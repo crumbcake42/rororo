@@ -1,0 +1,5 @@
+{
+	"autoMode": {
+		"allow": ["$defaults", "bash office *"]
+	}
+}

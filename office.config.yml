@@ -25,6 +25,13 @@ branch_strategy: tiered
 #            empty or a human-block fires. Respects pause/resume toggle.
 dispatch_mode: manual
 
+# --- Daemon ------------------------------------------------------------------
+# Controls for the autonomous dispatch daemon (dispatch_mode: daemon).
+daemon:
+  # How often to poll for new tasks when the queue is empty (hibernation state).
+  # In seconds. While actively dispatching, the daemon re-checks immediately.
+  hibernation_interval: 300  # 5 minutes
+
 # --- Notification Mode -------------------------------------------------------
 # "watch" — blocking questions print to terminal, dispatch waits for response
 # "afk"   — blocking questions fire a webhook to Slack or SMS, user responds
@@ -61,22 +68,31 @@ role_models:
   security-reviewer: opus
 
 # --- Quality Gates -----------------------------------------------------------
-# Named commands that CI and the dispatch script invoke.
-# Apply a preset (`office preset typescript-node`) or fill in manually.
-# All gates must pass before a PR can merge.
-quality_gates:
+# Two gate sets: template gates run against office/, project gates run against
+# the adopting project's code. CI detects which paths changed and runs the
+# appropriate set. PRs touching both paths run both.
+#
+# Template gates are self-contained — they don't depend on the adopter's stack.
+# Project gates are filled by `office preset <name>` or manually.
+
+template_gates:
   test:
-    description: "Run the test suite"
-    command: ""         # e.g. "npm test" or "pytest"
-  lint:
-    description: "Run the linter"
-    command: ""         # e.g. "npx eslint . --max-warnings 0" or "ruff check ."
+    command: "cd office && npm test"
   typecheck:
-    description: "Run type checking"
-    command: ""         # e.g. "npx tsc --noEmit" or "mypy ."
+    command: "cd office && npm run typecheck"
   format_check:
-    description: "Verify code formatting"
-    command: ""         # e.g. "npx prettier --check ." or "ruff format --check ."
+    command: "cd office && npm run format:check"
+
+# Apply a preset (`office preset typescript-node`) or fill in manually.
+project_gates:
+  test:
+    command: ""
+  lint:
+    command: ""
+  typecheck:
+    command: ""
+  format_check:
+    command: ""
 
 # --- Adversarial Review ------------------------------------------------------
 # Controls for the architecture-decision pipeline's debate format.

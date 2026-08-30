@@ -6,11 +6,8 @@ import { resolve } from "node:path";
 import { loadConfig } from "./config.js";
 import { dispatchNext } from "./dispatch.js";
 import { getStatus, formatStatus } from "./status.js";
-import {
-  generateStandup,
-  launchInteractiveStandup,
-} from "./standup.js";
-import { pause, resume, runDaemon } from "./daemon.js";
+import { generateStandup, launchInteractiveStandup } from "./standup.js";
+import { daemonStatus, pause, resume, runDaemon } from "./daemon.js";
 import { launchCreateSession } from "./create.js";
 
 const program = new Command();
@@ -22,25 +19,28 @@ program
   .version("0.1.0");
 
 program
-  .command("dispatch")
+  .command("dispatch [issue]")
   .description(
-    "Dispatch the next ready task to an agent pipeline"
+    "Dispatch a ready task to an agent pipeline. Optionally specify an issue number.",
   )
-  .action(async () => {
+  .action(async (issue?: string) => {
     const config = loadConfig(projectRoot);
-    const dispatched = await dispatchNext(config, projectRoot);
+    const issueNumber = issue ? parseInt(issue, 10) : undefined;
+    if (issue && isNaN(issueNumber!)) {
+      console.error(`Invalid issue number: ${issue}`);
+      process.exit(1);
+    }
+    const dispatched = await dispatchNext(config, projectRoot, issueNumber);
     if (!dispatched) {
       console.log(
-        "No tasks ready for dispatch. Create an issue with status:ready to get started."
+        "No tasks ready for dispatch. Create an issue with status:ready to get started.",
       );
     }
   });
 
 program
   .command("create [topic]")
-  .description(
-    "Create a new issue through an interactive PM session"
-  )
+  .description("Create a new issue through an interactive PM session")
   .action(async (topic?: string) => {
     const config = loadConfig(projectRoot);
     await launchCreateSession(config, projectRoot, topic);
@@ -84,13 +84,16 @@ program
   });
 
 program
+  .command("daemon-status")
+  .description("Report current daemon state, uptime, and ready-queue depth")
+  .action(async () => {
+    await daemonStatus(projectRoot);
+  });
+
+program
   .command("start")
   .description("Start the autonomous dispatch daemon")
-  .option(
-    "--interval <seconds>",
-    "Poll interval in seconds",
-    "30"
-  )
+  .option("--interval <seconds>", "Poll interval in seconds", "30")
   .action(async (options: { interval: string }) => {
     const config = loadConfig(projectRoot);
     const intervalMs = parseInt(options.interval, 10) * 1000;
@@ -99,9 +102,7 @@ program
 
 program
   .command("preset <name>")
-  .description(
-    "Apply a stack preset (e.g., typescript-node, python)"
-  )
+  .description("Apply a stack preset (e.g., typescript-node, python)")
   .action((name: string) => {
     const presetPath = resolve(projectRoot, "presets", `${name}.yml`);
     let presetContent: string;
@@ -109,7 +110,7 @@ program
       presetContent = readFileSync(presetPath, "utf-8");
     } catch {
       console.error(
-        `Preset not found: ${name}\nAvailable presets: typescript-node, python`
+        `Preset not found: ${name}\nAvailable presets: typescript-node, python`,
       );
       process.exit(1);
     }
@@ -117,18 +118,23 @@ program
     const configPath = resolve(projectRoot, "office.config.yml");
     const configContent = readFileSync(configPath, "utf-8");
 
-    const sectionPattern = /^quality_gates:\n(?:[ \t]+.*\n)*/m;
+    const sectionPattern = /^project_gates:\r?\n(?:[ \t]+.*\r?\n)*/m;
     const match = configContent.match(sectionPattern);
 
     if (!match) {
-      console.error("Could not find quality_gates section in office.config.yml");
+      console.error(
+        "Could not find project_gates section in office.config.yml",
+      );
       process.exit(1);
     }
 
-    const updated = configContent.replace(sectionPattern, presetContent.trimEnd() + "\n");
+    const updated = configContent.replace(
+      sectionPattern,
+      presetContent.trimEnd() + "\n",
+    );
     writeFileSync(configPath, updated);
     console.log(`Applied preset: ${name}`);
-    console.log("Quality gates updated in office.config.yml");
+    console.log("Project quality gates updated in office.config.yml");
   });
 
 program.parse();

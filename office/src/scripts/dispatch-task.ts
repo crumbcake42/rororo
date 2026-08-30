@@ -33,11 +33,11 @@ try {
       dispatched: true,
       issue: issueNumber,
       pipeline: pipelineName,
-    })
+    }),
   );
 } catch (error) {
   console.error(
-    `Dispatch failed: ${error instanceof Error ? error.message : String(error)}`
+    `Dispatch failed: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exit(1);
 }

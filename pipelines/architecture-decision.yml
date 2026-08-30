@@ -28,4 +28,4 @@ steps:
     description: "User approves or modifies the proposed decision"
     blocking: true
     outputs:
-      - Decision logged in DECISIONS.md
+      - ARCHITECTURE.md and/or relevant OpenSpec spec updated to reflect decision

@@ -5,7 +5,38 @@ on:
     branches: [main, dev, staging]
 
 jobs:
-  quality:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      office_changed: ${{ steps.filter.outputs.office }}
+      project_changed: ${{ steps.filter.outputs.project }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: filter
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD")
+
+          if echo "$CHANGED" | grep -q '^office/'; then
+            echo "office=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "office=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if echo "$CHANGED" | grep -qvE '^(office/|\.github/)'; then
+            echo "project=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "project=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  template-quality:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.office_changed == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -25,18 +56,56 @@ jobs:
         id: gates
         run: node office/dist/scripts/read-gates.js
 
-      - name: Test
-        if: steps.gates.outputs.test_cmd != ''
-        run: ${{ steps.gates.outputs.test_cmd }}
+      - name: Template Test
+        if: steps.gates.outputs.template_test_cmd != ''
+        run: ${{ steps.gates.outputs.template_test_cmd }}
 
-      - name: Lint
-        if: steps.gates.outputs.lint_cmd != ''
-        run: ${{ steps.gates.outputs.lint_cmd }}
+      - name: Template Lint
+        if: steps.gates.outputs.template_lint_cmd != ''
+        run: ${{ steps.gates.outputs.template_lint_cmd }}
 
-      - name: Type Check
-        if: steps.gates.outputs.typecheck_cmd != ''
-        run: ${{ steps.gates.outputs.typecheck_cmd }}
+      - name: Template Type Check
+        if: steps.gates.outputs.template_typecheck_cmd != ''
+        run: ${{ steps.gates.outputs.template_typecheck_cmd }}
 
-      - name: Format Check
-        if: steps.gates.outputs.format_cmd != ''
-        run: ${{ steps.gates.outputs.format_cmd }}
+      - name: Template Format Check
+        if: steps.gates.outputs.template_format_check_cmd != ''
+        run: ${{ steps.gates.outputs.template_format_check_cmd }}
+
+  project-quality:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.project_changed == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install office dependencies
+        run: cd office && npm ci
+
+      - name: Build office
+        run: cd office && npm run build
+
+      - name: Read quality gate commands
+        id: gates
+        run: node office/dist/scripts/read-gates.js
+
+      - name: Project Test
+        if: steps.gates.outputs.project_test_cmd != ''
+        run: ${{ steps.gates.outputs.project_test_cmd }}
+
+      - name: Project Lint
+        if: steps.gates.outputs.project_lint_cmd != ''
+        run: ${{ steps.gates.outputs.project_lint_cmd }}
+
+      - name: Project Type Check
+        if: steps.gates.outputs.project_typecheck_cmd != ''
+        run: ${{ steps.gates.outputs.project_typecheck_cmd }}
+
+      - name: Project Format Check
+        if: steps.gates.outputs.project_format_check_cmd != ''
+        run: ${{ steps.gates.outputs.project_format_check_cmd }}

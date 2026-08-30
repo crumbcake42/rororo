@@ -68,11 +68,11 @@ quality_gates:
   test:
     command: ""
   lint:
-    command: "npx eslint . --max-warnings 0"
+    command: "cd office && npm run lint"
   typecheck:
-    command: "npx tsc --noEmit"
+    command: "cd office && npm run typecheck"
   format_check:
-    command: "npx prettier --check ."
+    command: "cd office && npm run format:check"
 
 # --- Adversarial Review ------------------------------------------------------
 # Controls for the architecture-decision pipeline's debate format.

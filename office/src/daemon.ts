@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { OfficeConfig } from "./config.js";
 import { dispatchNext } from "./dispatch.js";
+import { listIssuesByLabel } from "./github.js";
 import { notify } from "./notify.js";
 
 const STATE_FILE = ".office-daemon-state.json";
@@ -92,16 +93,28 @@ export function isDaemonPaused(projectRoot: string): boolean {
   return loadState(projectRoot).status === "paused";
 }
 
-export function daemonStatus(projectRoot: string): void {
+export async function daemonStatus(projectRoot: string): Promise<void> {
   const state = loadState(projectRoot);
   const uptimeMs = Date.now() - new Date(state.startedAt).getTime();
-  const uptimeMin = Math.floor(uptimeMs / 60_000);
-  const uptimeSec = Math.floor((uptimeMs % 60_000) / 1000);
+  const uptimeStr = formatUptime(uptimeMs);
 
-  console.log(`Status:           ${state.status}`);
-  console.log(`Uptime:           ${uptimeMin}m ${uptimeSec}s`);
+  const lastDispatch = state.lastDispatch
+    ? new Date(state.lastDispatch).toLocaleString()
+    : "never";
+
+  let queueDepth = "unknown";
+  try {
+    const readyIssues = await listIssuesByLabel("status:ready");
+    queueDepth = String(readyIssues.length);
+  } catch {
+    // Non-fatal — GitHub may be unavailable
+  }
+
+  console.log(`State:            ${state.status}`);
+  console.log(`Uptime:           ${uptimeStr}`);
   console.log(`Tasks dispatched: ${state.tasksDispatched}`);
-  console.log(`Last dispatch:    ${state.lastDispatch ?? "none"}`);
+  console.log(`Last dispatch:    ${lastDispatch}`);
+  console.log(`Ready queue:      ${queueDepth} tasks`);
 }
 
 export async function runDaemon(
@@ -169,6 +182,16 @@ export async function runDaemon(
 
     await sleep(hibernationIntervalMs);
   }
+}
+
+function formatUptime(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 function sleep(ms: number): Promise<void> {

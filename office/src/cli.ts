@@ -7,7 +7,7 @@ import { loadConfig } from "./config.js";
 import { dispatchNext } from "./dispatch.js";
 import { getStatus, formatStatus } from "./status.js";
 import { generateStandup, launchInteractiveStandup } from "./standup.js";
-import { pause, resume, runDaemon } from "./daemon.js";
+import { daemonStatus, pause, resume, runDaemon } from "./daemon.js";
 import { launchCreateSession } from "./create.js";
 
 const program = new Command();
@@ -81,6 +81,13 @@ program
   .description("Resume the daemon dispatch loop")
   .action(() => {
     resume(projectRoot);
+  });
+
+program
+  .command("daemon-status")
+  .description("Report current daemon state, uptime, and ready-queue depth")
+  .action(async () => {
+    await daemonStatus(projectRoot);
   });
 
 program

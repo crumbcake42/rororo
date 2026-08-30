@@ -21,7 +21,7 @@ program
 program
   .command("dispatch [issue]")
   .description(
-    "Dispatch a ready task to an agent pipeline. Optionally specify an issue number."
+    "Dispatch a ready task to an agent pipeline. Optionally specify an issue number.",
   )
   .action(async (issue?: string) => {
     const config = loadConfig(projectRoot);

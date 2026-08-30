@@ -11,14 +11,14 @@ const STATE_FILE = ".office-daemon-state.json";
 function writeState(
   dir: string,
   overrides: Partial<{
-    phase: string;
+    status: string;
     startedAt: string;
     lastDispatch: string | null;
     tasksDispatched: number;
   }> = {},
 ): void {
   const state = {
-    phase: "active",
+    status: "active",
     startedAt: new Date().toISOString(),
     lastDispatch: null,
     tasksDispatched: 0,
@@ -47,29 +47,25 @@ describe("pause()", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test("prints not-running message when no state file exists", () => {
+  test("creates state file and pauses when no state file exists", () => {
     pause(tmpDir);
-    const logged = logMock.mock.calls.map((c) => c.arguments[0]);
-    assert.ok(
-      logged.some((msg) => String(msg).includes("No daemon state found")),
-      `Expected 'No daemon state found' in: ${JSON.stringify(logged)}`,
-    );
+    assert.equal(readState(tmpDir).status, "paused");
   });
 
   test("transitions active daemon to paused", () => {
-    writeState(tmpDir, { phase: "active" });
+    writeState(tmpDir, { status: "active" });
     pause(tmpDir);
-    assert.equal(readState(tmpDir).phase, "paused");
+    assert.equal(readState(tmpDir).status, "paused");
   });
 
   test("transitions hibernating daemon to paused", () => {
-    writeState(tmpDir, { phase: "hibernation" });
+    writeState(tmpDir, { status: "hibernation" });
     pause(tmpDir);
-    assert.equal(readState(tmpDir).phase, "paused");
+    assert.equal(readState(tmpDir).status, "paused");
   });
 
   test("logs confirmation message on success", () => {
-    writeState(tmpDir, { phase: "active" });
+    writeState(tmpDir, { status: "active" });
     pause(tmpDir);
     const logged = logMock.mock.calls.map((c) => c.arguments[0]);
     assert.ok(
@@ -93,23 +89,19 @@ describe("resume()", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test("prints not-running message when no state file exists", () => {
+  test("creates state file and resumes when no state file exists", () => {
     resume(tmpDir);
-    const logged = logMock.mock.calls.map((c) => c.arguments[0]);
-    assert.ok(
-      logged.some((msg) => String(msg).includes("No daemon state found")),
-      `Expected 'No daemon state found' in: ${JSON.stringify(logged)}`,
-    );
+    assert.equal(readState(tmpDir).status, "active");
   });
 
   test("transitions paused daemon to active", () => {
-    writeState(tmpDir, { phase: "paused" });
+    writeState(tmpDir, { status: "paused" });
     resume(tmpDir);
-    assert.equal(readState(tmpDir).phase, "active");
+    assert.equal(readState(tmpDir).status, "active");
   });
 
   test("logs confirmation message on success", () => {
-    writeState(tmpDir, { phase: "paused" });
+    writeState(tmpDir, { status: "paused" });
     resume(tmpDir);
     const logged = logMock.mock.calls.map((c) => c.arguments[0]);
     assert.ok(
@@ -119,7 +111,7 @@ describe("resume()", () => {
   });
 
   test("preserves tasksDispatched counter on resume", () => {
-    writeState(tmpDir, { phase: "paused", tasksDispatched: 7 });
+    writeState(tmpDir, { status: "paused", tasksDispatched: 7 });
     resume(tmpDir);
     assert.equal(readState(tmpDir).tasksDispatched, 7);
   });
@@ -140,18 +132,18 @@ describe("isDaemonPaused()", () => {
     assert.equal(isDaemonPaused(tmpDir), false);
   });
 
-  test("returns true when phase is paused", () => {
-    writeState(tmpDir, { phase: "paused" });
+  test("returns true when status is paused", () => {
+    writeState(tmpDir, { status: "paused" });
     assert.equal(isDaemonPaused(tmpDir), true);
   });
 
-  test("returns false when phase is active", () => {
-    writeState(tmpDir, { phase: "active" });
+  test("returns false when status is active", () => {
+    writeState(tmpDir, { status: "active" });
     assert.equal(isDaemonPaused(tmpDir), false);
   });
 
-  test("returns false when phase is hibernation", () => {
-    writeState(tmpDir, { phase: "hibernation" });
+  test("returns false when status is hibernation", () => {
+    writeState(tmpDir, { status: "hibernation" });
     assert.equal(isDaemonPaused(tmpDir), false);
   });
 });
@@ -179,36 +171,29 @@ describe("daemonStatus()", () => {
     }
   });
 
-  test("prints not-started message when no state file exists", async () => {
+  test("prints default status when no state file exists", async () => {
     await daemonStatus(tmpDir);
-    const logged = logMock.mock.calls.map((c) => c.arguments[0]);
-    assert.equal(logged.length, 1, "should print exactly one line");
-    assert.ok(
-      String(logged[0]).includes("Daemon has not started"),
-      `Expected not-started message, got: ${JSON.stringify(logged)}`,
-    );
-    assert.ok(
-      String(logged[0]).includes("office start"),
-      "should mention how to start the daemon",
-    );
+    const lines = logMock.mock.calls.map((c) => String(c.arguments[0]));
+    assert.equal(lines.length, 5, `Expected 5 output lines, got ${lines.length}: ${JSON.stringify(lines)}`);
+    assert.ok(lines.some((l) => l.includes("active")), "default state should be active");
   });
 
   test("prints state field", async () => {
-    writeState(tmpDir, { phase: "active" });
+    writeState(tmpDir, { status: "active" });
     await daemonStatus(tmpDir);
     const output = logMock.mock.calls.map((c) => String(c.arguments[0])).join("\n");
     assert.ok(output.includes("active"), `Expected 'active' in output: ${output}`);
   });
 
-  test("prints paused phase correctly", async () => {
-    writeState(tmpDir, { phase: "paused" });
+  test("prints paused status correctly", async () => {
+    writeState(tmpDir, { status: "paused" });
     await daemonStatus(tmpDir);
     const output = logMock.mock.calls.map((c) => String(c.arguments[0])).join("\n");
     assert.ok(output.includes("paused"), `Expected 'paused' in output: ${output}`);
   });
 
-  test("prints hibernation phase correctly", async () => {
-    writeState(tmpDir, { phase: "hibernation" });
+  test("prints hibernation status correctly", async () => {
+    writeState(tmpDir, { status: "hibernation" });
     await daemonStatus(tmpDir);
     const output = logMock.mock.calls.map((c) => String(c.arguments[0])).join("\n");
     assert.ok(output.includes("hibernation"), `Expected 'hibernation' in output: ${output}`);

@@ -60,7 +60,7 @@ function remoteBranchExists(projectRoot: string, branch: string): boolean {
 function createWorktreeFromRemote(
   projectRoot: string,
   branch: string,
-  issueNumber: number
+  issueNumber: number,
 ): WorktreeInfo {
   const worktreeBase = resolve(projectRoot, WORKTREE_DIR);
   if (!existsSync(worktreeBase)) {
@@ -71,12 +71,14 @@ function createWorktreeFromRemote(
   const worktreePath = resolve(worktreeBase, dirName);
 
   if (existsSync(worktreePath)) {
-    throw new Error(`Worktree already exists at ${worktreePath}. Clean it up first.`);
+    throw new Error(
+      `Worktree already exists at ${worktreePath}. Clean it up first.`,
+    );
   }
 
   execSync(
     `git worktree add -B "${branch}" "${worktreePath}" "origin/${branch}"`,
-    { cwd: projectRoot, stdio: "pipe" }
+    { cwd: projectRoot, stdio: "pipe" },
   );
 
   return { path: worktreePath, branch, issueNumber };
@@ -106,7 +108,7 @@ function commitStep(
   worktreePath: string,
   stepNumber: number,
   totalSteps: number,
-  role: string
+  role: string,
 ): void {
   const status = execSync("git status --porcelain", {
     cwd: worktreePath,
@@ -114,27 +116,30 @@ function commitStep(
     stdio: "pipe",
   });
   if (status.trim().length === 0) {
-    console.log(`  No changes from step ${stepNumber}/${totalSteps} (${role}) — skipping commit.`);
+    console.log(
+      `  No changes from step ${stepNumber}/${totalSteps} (${role}) — skipping commit.`,
+    );
     return;
   }
   execSync("git add -A", { cwd: worktreePath, stdio: "pipe" });
-  execSync(
-    `git commit -m "step ${stepNumber}/${totalSteps}: ${role}"`,
-    { cwd: worktreePath, stdio: "pipe" }
-  );
+  execSync(`git commit -m "step ${stepNumber}/${totalSteps}: ${role}"`, {
+    cwd: worktreePath,
+    stdio: "pipe",
+  });
   console.log(`  Committed step ${stepNumber}/${totalSteps}: ${role}.`);
 }
 
 function pushBranchOnFailure(
   worktreePath: string,
   branch: string,
-  baseBranch: string
+  baseBranch: string,
 ): void {
   try {
-    const ahead = execSync(
-      `git log "origin/${baseBranch}..HEAD" --oneline`,
-      { cwd: worktreePath, encoding: "utf-8", stdio: "pipe" }
-    );
+    const ahead = execSync(`git log "origin/${baseBranch}..HEAD" --oneline`, {
+      cwd: worktreePath,
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
     if (ahead.trim().length === 0) {
       return;
     }
@@ -148,15 +153,8 @@ function pushBranchOnFailure(
   }
 }
 
-function loadPipeline(
-  projectRoot: string,
-  pipelineName: string
-): Pipeline {
-  const pipelinePath = resolve(
-    projectRoot,
-    "pipelines",
-    `${pipelineName}.yml`
-  );
+function loadPipeline(projectRoot: string, pipelineName: string): Pipeline {
+  const pipelinePath = resolve(projectRoot, "pipelines", `${pipelineName}.yml`);
   if (!existsSync(pipelinePath)) {
     throw new Error(`Pipeline definition not found: ${pipelinePath}`);
   }
@@ -261,10 +259,12 @@ function invokeAgent(
   }
 
   const args = [
-    "--model", model,
+    "--model",
+    model,
     "--print",
     "--dangerously-skip-permissions",
-    "--append-system-prompt-file", agentFile,
+    "--append-system-prompt-file",
+    agentFile,
   ];
 
   console.log(`Invoking ${step.role} agent (${model}) in ${worktreePath}...`);
@@ -272,14 +272,16 @@ function invokeAgent(
   const result = spawnSync("claude", args, {
     cwd: worktreePath,
     input: contextPrompt,
-    stdio: captureOutput ? ["pipe", "pipe", "inherit"] : ["pipe", "inherit", "inherit"],
+    stdio: captureOutput
+      ? ["pipe", "pipe", "inherit"]
+      : ["pipe", "inherit", "inherit"],
     timeout: 600_000,
     encoding: captureOutput ? "utf-8" : undefined,
   });
 
   if (result.status !== 0) {
     throw new Error(
-      `Agent ${step.role} failed with exit code ${result.status}`
+      `Agent ${step.role} failed with exit code ${result.status}`,
     );
   }
 
@@ -427,7 +429,7 @@ async function runAdversarialDebate(
 export async function dispatchNext(
   config: OfficeConfig,
   projectRoot: string,
-  issueNumber?: number
+  issueNumber?: number,
 ): Promise<boolean> {
   let issue: GitHubIssue;
 
@@ -535,7 +537,7 @@ export async function dispatchIssue(
 
       if (completedSteps.has(i)) {
         console.log(
-          `\n--- Step ${i + 1}/${pipeline.steps.length}: ${step.role} (already completed, skipping) ---`
+          `\n--- Step ${i + 1}/${pipeline.steps.length}: ${step.role} (already completed, skipping) ---`,
         );
         continue;
       }
@@ -552,13 +554,7 @@ export async function dispatchIssue(
         i,
       );
 
-      invokeAgent(
-        config,
-        projectRoot,
-        worktree.path,
-        step,
-        context
-      );
+      invokeAgent(config, projectRoot, worktree.path, step, context);
 
       commitStep(worktree.path, i + 1, pipeline.steps.length, step.role);
     }

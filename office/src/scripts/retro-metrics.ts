@@ -1,4 +1,9 @@
-import { listAllIssues, listRecentPRs, getStatusLabel, getPipelineLabel } from "../github.js";
+import {
+  listAllIssues,
+  listRecentPRs,
+  getStatusLabel,
+  getPipelineLabel,
+} from "../github.js";
 
 try {
   const issues = await listAllIssues();
@@ -33,7 +38,9 @@ try {
 
   const mergedPRs = prs.filter((pr) => pr.merged);
   const openPRs = prs.filter((pr) => pr.state === "open");
-  const closedNotMerged = prs.filter((pr) => pr.state === "closed" && !pr.merged);
+  const closedNotMerged = prs.filter(
+    (pr) => pr.state === "closed" && !pr.merged,
+  );
 
   const metrics = {
     generated_at: new Date().toISOString(),
@@ -45,15 +52,21 @@ try {
     status_distribution: statusCounts,
     pipeline_distribution: pipelineCounts,
     blocked_rates: {
-      total_blocked: blockedCounts.human + blockedCounts.dependency + blockedCounts.unclassified,
+      total_blocked:
+        blockedCounts.human +
+        blockedCounts.dependency +
+        blockedCounts.unclassified,
       by_category: blockedCounts,
-      blocked_percentage: issues.length > 0
-        ? Math.round(
-            ((blockedCounts.human + blockedCounts.dependency + blockedCounts.unclassified) /
-              issues.length) *
-              100
-          )
-        : 0,
+      blocked_percentage:
+        issues.length > 0
+          ? Math.round(
+              ((blockedCounts.human +
+                blockedCounts.dependency +
+                blockedCounts.unclassified) /
+                issues.length) *
+                100,
+            )
+          : 0,
     },
     pr_stats: {
       total: prs.length,
@@ -66,7 +79,7 @@ try {
   console.log(JSON.stringify(metrics, null, 2));
 } catch (error) {
   console.error(
-    `Failed to compute retro metrics: ${error instanceof Error ? error.message : String(error)}`
+    `Failed to compute retro metrics: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exit(1);
 }

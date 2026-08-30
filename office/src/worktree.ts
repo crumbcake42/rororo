@@ -21,7 +21,7 @@ function slugify(title: string): string {
 export function branchName(
   issueNumber: number,
   title: string,
-  pipeline: string
+  pipeline: string,
 ): string {
   const slug = slugify(title);
   const prefix = pipeline.startsWith("bug") ? "fix" : "feat";
@@ -32,7 +32,7 @@ export function createWorktree(
   projectRoot: string,
   baseBranch: string,
   branch: string,
-  issueNumber: number
+  issueNumber: number,
 ): WorktreeInfo {
   const worktreeBase = resolve(projectRoot, WORKTREE_DIR);
   if (!existsSync(worktreeBase)) {
@@ -44,7 +44,7 @@ export function createWorktree(
 
   if (existsSync(worktreePath)) {
     throw new Error(
-      `Worktree already exists at ${worktreePath}. Clean it up first or use a different branch name.`
+      `Worktree already exists at ${worktreePath}. Clean it up first or use a different branch name.`,
     );
   }
 
@@ -55,7 +55,7 @@ export function createWorktree(
 
   execSync(
     `git worktree add "${worktreePath}" -b "${branch}" "origin/${baseBranch}"`,
-    { cwd: projectRoot, stdio: "pipe" }
+    { cwd: projectRoot, stdio: "pipe" },
   );
 
   return { path: worktreePath, branch, issueNumber };
@@ -64,7 +64,7 @@ export function createWorktree(
 export function cleanupWorktree(
   projectRoot: string,
   worktreePath: string,
-  branch: string
+  branch: string,
 ): void {
   if (existsSync(worktreePath)) {
     execSync(`git worktree remove "${worktreePath}" --force`, {

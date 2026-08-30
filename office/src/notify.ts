@@ -9,7 +9,7 @@ export interface Notification {
 
 export async function notify(
   config: OfficeConfig,
-  notification: Notification
+  notification: Notification,
 ): Promise<void> {
   if (config.notification_mode === "afk") {
     await notifyAfk(config, notification);
@@ -29,7 +29,7 @@ function notifyWatch(notification: Notification): void {
 
 async function notifyAfk(
   config: OfficeConfig,
-  notification: Notification
+  notification: Notification,
 ): Promise<void> {
   if (config.afk.slack_webhook_url) {
     await sendSlack(config.afk.slack_webhook_url, notification);
@@ -42,7 +42,7 @@ async function notifyAfk(
 
 async function sendSlack(
   webhookUrl: string,
-  notification: Notification
+  notification: Notification,
 ): Promise<void> {
   const payload = {
     text: `*Blocked: #${notification.issueNumber} — ${notification.title}*\n${notification.message}\n<${notification.url}|View Issue>`,
@@ -56,14 +56,14 @@ async function sendSlack(
 
   if (!response.ok) {
     console.error(
-      `Slack notification failed: ${response.status} ${response.statusText}`
+      `Slack notification failed: ${response.status} ${response.statusText}`,
     );
   }
 }
 
 async function sendSms(
   config: OfficeConfig,
-  notification: Notification
+  notification: Notification,
 ): Promise<void> {
   const url = `https://api.twilio.com/2010-04-01/Accounts/${config.afk.twilio_sid}/Messages.json`;
   const body = new URLSearchParams({
@@ -73,7 +73,7 @@ async function sendSms(
   });
 
   const credentials = Buffer.from(
-    `${config.afk.twilio_sid}:${config.afk.twilio_token}`
+    `${config.afk.twilio_sid}:${config.afk.twilio_token}`,
   ).toString("base64");
 
   const response = await fetch(url, {
@@ -87,7 +87,7 @@ async function sendSms(
 
   if (!response.ok) {
     console.error(
-      `SMS notification failed: ${response.status} ${response.statusText}`
+      `SMS notification failed: ${response.status} ${response.statusText}`,
     );
   }
 }

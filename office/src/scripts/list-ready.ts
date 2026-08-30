@@ -13,7 +13,7 @@ try {
   console.log(JSON.stringify(result, null, 2));
 } catch (error) {
   console.error(
-    `Failed to list ready issues: ${error instanceof Error ? error.message : String(error)}`
+    `Failed to list ready issues: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exit(1);
 }

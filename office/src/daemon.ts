@@ -1,14 +1,20 @@
+import yaml from "js-yaml";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { OfficeConfig } from "./config.js";
 import { dispatchNext } from "./dispatch.js";
+import { notify } from "./notify.js";
 
 const STATE_FILE = ".office-daemon-state.json";
+const DEFAULT_HIBERNATION_INTERVAL_S = 300;
+
+type DaemonStatusValue = "active" | "hibernation" | "paused";
 
 interface DaemonState {
-  paused: boolean;
+  status: DaemonStatusValue;
   startedAt: string;
   lastDispatch: string | null;
+  tasksDispatched: number;
 }
 
 function statePath(projectRoot: string): string {
@@ -18,46 +24,103 @@ function statePath(projectRoot: string): string {
 function loadState(projectRoot: string): DaemonState {
   const path = statePath(projectRoot);
   if (existsSync(path)) {
-    return JSON.parse(readFileSync(path, "utf-8"));
+    const raw = JSON.parse(readFileSync(path, "utf-8")) as Partial<DaemonState>;
+    return {
+      status: raw.status ?? "active",
+      startedAt: raw.startedAt ?? new Date().toISOString(),
+      lastDispatch: raw.lastDispatch ?? null,
+      tasksDispatched: raw.tasksDispatched ?? 0,
+    };
   }
-  return { paused: false, startedAt: new Date().toISOString(), lastDispatch: null };
+  return {
+    status: "active",
+    startedAt: new Date().toISOString(),
+    lastDispatch: null,
+    tasksDispatched: 0,
+  };
 }
 
 function saveState(projectRoot: string, state: DaemonState): void {
   writeFileSync(statePath(projectRoot), JSON.stringify(state, null, 2));
 }
 
+function readHibernationIntervalMs(projectRoot: string): number {
+  const configPath = resolve(projectRoot, "office.config.yml");
+  if (!existsSync(configPath)) return DEFAULT_HIBERNATION_INTERVAL_S * 1000;
+  const raw = yaml.load(readFileSync(configPath, "utf-8")) as Record<
+    string,
+    unknown
+  >;
+  const daemonCfg = raw?.daemon as
+    { hibernation_interval?: number } | undefined;
+  return (
+    (daemonCfg?.hibernation_interval ?? DEFAULT_HIBERNATION_INTERVAL_S) * 1000
+  );
+}
+
+async function notifyDaemon(
+  config: OfficeConfig,
+  message: string,
+): Promise<void> {
+  if (config.notification_mode === "afk") {
+    await notify(config, {
+      issueNumber: 0,
+      title: "Agent Office Daemon",
+      message,
+      url: "",
+    });
+  } else {
+    console.log(`[daemon] ${message}`);
+  }
+}
+
 export function pause(projectRoot: string): void {
   const state = loadState(projectRoot);
-  state.paused = true;
+  state.status = "paused";
   saveState(projectRoot, state);
   console.log("Daemon paused.");
 }
 
 export function resume(projectRoot: string): void {
   const state = loadState(projectRoot);
-  state.paused = false;
+  state.status = "active";
   saveState(projectRoot, state);
-  console.log("Daemon resumed.");
+  console.log("Daemon resumed — will check for ready tasks immediately.");
 }
 
 export function isDaemonPaused(projectRoot: string): boolean {
-  return loadState(projectRoot).paused;
+  return loadState(projectRoot).status === "paused";
+}
+
+export function daemonStatus(projectRoot: string): void {
+  const state = loadState(projectRoot);
+  const uptimeMs = Date.now() - new Date(state.startedAt).getTime();
+  const uptimeMin = Math.floor(uptimeMs / 60_000);
+  const uptimeSec = Math.floor((uptimeMs % 60_000) / 1000);
+
+  console.log(`Status:           ${state.status}`);
+  console.log(`Uptime:           ${uptimeMin}m ${uptimeSec}s`);
+  console.log(`Tasks dispatched: ${state.tasksDispatched}`);
+  console.log(`Last dispatch:    ${state.lastDispatch ?? "none"}`);
 }
 
 export async function runDaemon(
   config: OfficeConfig,
   projectRoot: string,
-  pollIntervalMs = 30_000
+  _pollIntervalMs = 30_000,
 ): Promise<void> {
+  const hibernationIntervalMs = readHibernationIntervalMs(projectRoot);
+
   console.log("Agent Office daemon starting...");
-  console.log(`Poll interval: ${pollIntervalMs / 1000}s`);
+  console.log(`Hibernation interval: ${hibernationIntervalMs / 1000}s`);
   console.log("Press Ctrl+C to stop.\n");
 
-  const state = loadState(projectRoot);
-  state.startedAt = new Date().toISOString();
-  state.paused = false;
-  saveState(projectRoot, state);
+  saveState(projectRoot, {
+    status: "active",
+    startedAt: new Date().toISOString(),
+    lastDispatch: null,
+    tasksDispatched: 0,
+  });
 
   const shutdown = () => {
     console.log("\nDaemon shutting down.");
@@ -67,26 +130,44 @@ export async function runDaemon(
   process.on("SIGTERM", shutdown);
 
   while (true) {
-    const currentState = loadState(projectRoot);
+    const state = loadState(projectRoot);
 
-    if (currentState.paused) {
-      await sleep(pollIntervalMs);
+    if (state.status === "paused") {
+      await sleep(5_000);
       continue;
     }
 
+    let dispatched = false;
     try {
-      const dispatched = await dispatchNext(config, projectRoot);
-      if (dispatched) {
-        currentState.lastDispatch = new Date().toISOString();
-        saveState(projectRoot, currentState);
-      }
+      dispatched = await dispatchNext(config, projectRoot);
     } catch (error) {
-      console.error(
-        `Dispatch error: ${error instanceof Error ? error.message : String(error)}`
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Dispatch error: ${message}`);
+      await notifyDaemon(config, `Dispatch error: ${message}`);
+    }
+
+    if (dispatched) {
+      state.tasksDispatched++;
+      state.lastDispatch = new Date().toISOString();
+      if (state.status === "hibernation") {
+        state.status = "active";
+        console.log("Task found — transitioning to active.");
+      }
+      saveState(projectRoot, state);
+      continue;
+    }
+
+    // Queue is empty
+    if (state.status === "active") {
+      state.status = "hibernation";
+      saveState(projectRoot, state);
+      await notifyDaemon(
+        config,
+        `Queue empty — hibernating. Polling every ${hibernationIntervalMs / 1000}s.`,
       );
     }
 
-    await sleep(pollIntervalMs);
+    await sleep(hibernationIntervalMs);
   }
 }
 

@@ -183,11 +183,11 @@ export async function runDaemon(
   _pollIntervalMs = 30_000,
 ): Promise<void> {
   const hibernationIntervalMs =
-    (config.daemon?.hibernation_interval ?? DEFAULT_HIBERNATION_INTERVAL_S) *
+    (config.daemon.hibernation_interval ?? DEFAULT_HIBERNATION_INTERVAL_S) *
     1000;
 
-  const budgetMinutes = config.daemon?.session_budget_minutes ?? 0;
-  const thresholdPct = config.daemon?.usage_threshold_pct ?? 80;
+  const budgetMinutes = config.daemon.session_budget_minutes ?? 0;
+  const thresholdPct = config.daemon.usage_threshold_pct ?? 80;
   const budget: UsageBudget =
     budgetMinutes > 0
       ? new SessionBudget(budgetMinutes, thresholdPct)

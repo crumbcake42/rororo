@@ -45,6 +45,11 @@ program
       console.error(`Invalid priority: ${priority}. Use "high" or "low".`);
       process.exit(1);
     }
+    if (priority && !issueNumber) {
+      console.warn(
+        `Warning: --priority is ignored without an explicit issue number.`,
+      );
+    }
     const dispatched = await dispatchNext(
       config,
       projectRoot,

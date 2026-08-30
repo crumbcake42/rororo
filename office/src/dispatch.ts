@@ -84,10 +84,16 @@ function readAndConsumeSignal(
   const path = signalFilePath(projectRoot, issueNumber);
   if (!existsSync(path)) return null;
   try {
-    const raw = JSON.parse(readFileSync(path, "utf-8")) as SignalFile;
+    const content = readFileSync(path, "utf-8");
     unlinkSync(path);
+    const raw = JSON.parse(content) as SignalFile;
     return raw.action ?? null;
   } catch {
+    try {
+      unlinkSync(path);
+    } catch {
+      // file already removed
+    }
     return null;
   }
 }
@@ -751,6 +757,8 @@ export async function dispatchIssue(
         }
       }
     }
+
+    readAndConsumeSignal(projectRoot, issue.number);
 
     console.log(`\nPushing branch ${branch} to origin...`);
     execSync(`git push -u origin "${branch}"`, {

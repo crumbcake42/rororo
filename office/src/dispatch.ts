@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, readdirSync, mkdirSync } from "node:fs";
-import { execSync, spawnSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { resolve } from "node:path";
 import yaml from "js-yaml";
 import type { OfficeConfig } from "./config.js";
@@ -246,7 +246,7 @@ export function invokeAgent(
   contextPrompt: string,
   captureOutput = false,
   readOnly = false,
-): string {
+): Promise<string> {
   const model = getModelForRole(config, step.role);
   const agentFile = resolve(
     projectRoot,
@@ -256,7 +256,9 @@ export function invokeAgent(
   );
 
   if (!existsSync(agentFile)) {
-    throw new Error(`Agent definition not found: ${agentFile}`);
+    return Promise.reject(
+      new Error(`Agent definition not found: ${agentFile}`),
+    );
   }
 
   const args = [
@@ -270,25 +272,93 @@ export function invokeAgent(
     agentFile,
   ];
 
+  const idleTimeoutSecs = config.dispatch.agent_idle_timeout;
+  const maxTimeoutSecs = config.dispatch.agent_max_timeout;
+  const idleMs = idleTimeoutSecs * 1000;
+  const maxMs = maxTimeoutSecs * 1000;
+
   console.log(`Invoking ${step.role} agent (${model}) in ${worktreePath}...`);
 
-  const result = spawnSync("claude", args, {
-    cwd: worktreePath,
-    input: contextPrompt,
-    stdio: captureOutput
-      ? ["pipe", "pipe", "inherit"]
-      : ["pipe", "inherit", "inherit"],
-    timeout: 600_000,
-    encoding: captureOutput ? "utf-8" : undefined,
-  });
+  return new Promise<string>((promiseResolve, promiseReject) => {
+    const child = spawn("claude", args, {
+      cwd: worktreePath,
+      stdio: ["pipe", "pipe", "pipe"],
+      shell: true,
+    });
 
-  if (result.status !== 0) {
-    throw new Error(
-      `Agent ${step.role} failed with exit code ${result.status}`,
+    let stdout = "";
+    let killed = false;
+    let killReason = "";
+
+    const killChild = (reason: string) => {
+      if (killed) return;
+      killed = true;
+      killReason = reason;
+      child.kill();
+    };
+
+    let idleTimer = setTimeout(
+      () =>
+        killChild(`idle for ${idleTimeoutSecs}s with no output — likely hung`),
+      idleMs,
     );
-  }
 
-  return captureOutput && result.stdout ? String(result.stdout) : "";
+    const resetIdleTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(
+        () =>
+          killChild(
+            `idle for ${idleTimeoutSecs}s with no output — likely hung`,
+          ),
+        idleMs,
+      );
+    };
+
+    const maxTimer = setTimeout(
+      () => killChild(`exceeded max timeout of ${maxTimeoutSecs}s`),
+      maxMs,
+    );
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      resetIdleTimer();
+      if (captureOutput) {
+        stdout += chunk.toString();
+      } else {
+        process.stdout.write(chunk);
+      }
+    });
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      resetIdleTimer();
+      process.stderr.write(chunk);
+    });
+
+    child.stdin.write(contextPrompt);
+    child.stdin.end();
+
+    child.on("close", (code) => {
+      clearTimeout(idleTimer);
+      clearTimeout(maxTimer);
+
+      if (killed) {
+        promiseReject(new Error(`Agent ${step.role} killed: ${killReason}`));
+      } else if (code !== 0) {
+        promiseReject(
+          new Error(`Agent ${step.role} failed with exit code ${code}`),
+        );
+      } else {
+        promiseResolve(captureOutput ? stdout : "");
+      }
+    });
+
+    child.on("error", (err) => {
+      clearTimeout(idleTimer);
+      clearTimeout(maxTimer);
+      promiseReject(
+        new Error(`Agent ${step.role} failed to start: ${err.message}`),
+      );
+    });
+  });
 }
 
 interface DebateRound {
@@ -355,7 +425,7 @@ async function runAdversarialDebate(
     ].join("\n");
 
     console.log(`\n--- Architect A (Round ${round}) ---`);
-    const outputA = invokeAgent(
+    const outputA = await invokeAgent(
       config,
       projectRoot,
       worktreePath,
@@ -373,7 +443,7 @@ async function runAdversarialDebate(
     ].join("\n");
 
     console.log(`\n--- Architect B (Round ${round}) ---`);
-    const outputB = invokeAgent(
+    const outputB = await invokeAgent(
       config,
       projectRoot,
       worktreePath,
@@ -397,7 +467,7 @@ async function runAdversarialDebate(
     `\nYou are the PM judge. Synthesize the debate above into a clear recommendation with tradeoffs. Do not pick a winner — identify the best path forward given both perspectives.`,
   ].join("\n");
 
-  const synthesis = invokeAgent(
+  const synthesis = await invokeAgent(
     config,
     projectRoot,
     worktreePath,
@@ -557,7 +627,7 @@ export async function dispatchIssue(
         i,
       );
 
-      invokeAgent(config, projectRoot, worktree.path, step, context);
+      await invokeAgent(config, projectRoot, worktree.path, step, context);
 
       commitStep(worktree.path, i + 1, pipeline.steps.length, step.role);
     }

@@ -13,6 +13,11 @@ export interface AdversarialConfig {
   architect_directives: string[];
 }
 
+export interface DispatchConfig {
+  agent_idle_timeout: number;
+  agent_max_timeout: number;
+}
+
 export interface AfkConfig {
   slack_webhook_url: string;
   twilio_sid: string;
@@ -35,6 +40,7 @@ export interface OfficeConfig {
   notification_mode: "watch" | "afk";
   afk: AfkConfig;
   dispatch_mode: "manual" | "daemon";
+  dispatch: DispatchConfig;
   models: {
     opus: string;
     sonnet: string;
@@ -83,6 +89,14 @@ export function loadConfig(projectRoot?: string): OfficeConfig {
     notification_mode: (raw.notification_mode as "watch" | "afk") ?? "watch",
     afk: resolveAfkConfig((raw.afk as Record<string, string>) ?? {}),
     dispatch_mode: (raw.dispatch_mode as "manual" | "daemon") ?? "manual",
+    dispatch: {
+      agent_idle_timeout:
+        ((raw.dispatch as Record<string, unknown>)
+          ?.agent_idle_timeout as number) ?? 300,
+      agent_max_timeout:
+        ((raw.dispatch as Record<string, unknown>)
+          ?.agent_max_timeout as number) ?? 3600,
+    },
     models: {
       opus:
         ((raw.models as Record<string, string>)?.opus as string) ??

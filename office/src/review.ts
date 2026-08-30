@@ -202,7 +202,7 @@ export async function reviewPR(
   };
 
   console.log("\nInvoking reviewer agent...\n");
-  const findings = invokeAgent(
+  const findings = await invokeAgent(
     config,
     projectRoot,
     projectRoot,

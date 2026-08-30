@@ -19,7 +19,7 @@ OpenSpec for specification management.
 | `status.ts` | Issue state aggregation and formatting |
 | `standup.ts` | Standup report generation and interactive mode |
 | `notify.ts` | Notification routing — terminal, Slack webhook, Twilio SMS |
-| `daemon.ts` | Phase 2: autonomous dispatch loop with pause/resume |
+| `daemon.ts` | Autonomous dispatch loop with pause/resume and lifecycle notifications |
 | `create.ts` | Interactive issue creation sessions |
 | `review.ts` | PR review — diff assembly, context building, reviewer agent invocation |
 

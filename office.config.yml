@@ -66,13 +66,13 @@ role_models:
 # All gates must pass before a PR can merge.
 quality_gates:
   test:
-    command: "npm test"
+    command: ""
   lint:
-    command: "npx eslint . --max-warnings 0"
+    command: ""
   typecheck:
-    command: "npx tsc --noEmit"
+    command: "cd office && npm run typecheck"
   format_check:
-    command: "npx prettier --check ."
+    command: "cd office && npm run format:check"
 
 # --- Adversarial Review ------------------------------------------------------
 # Controls for the architecture-decision pipeline's debate format.

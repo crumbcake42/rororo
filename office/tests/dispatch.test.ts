@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { OfficeConfig } from "../src/config.js";
 
 // ---------------------------------------------------------------------------
 // Module-level mock setup
@@ -43,7 +44,7 @@ mock.module(new URL("../src/github.js", import.meta.url).href, {
   },
 });
 
-const { writeSignal } = await import("../src/dispatch.js");
+const { writeSignal, dispatchNext } = await import("../src/dispatch.js");
 const { pausePipeline, cancelPipeline, resumePipeline } = await import(
   "../src/daemon.js"
 );
@@ -264,5 +265,80 @@ describe("resumePipeline()", () => {
       warnMock.mock.callCount() > 0,
       "console.warn should be called when issue is not paused",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dispatchNext() priority label application
+// ---------------------------------------------------------------------------
+
+const minimalConfig = {} as unknown as OfficeConfig;
+
+describe("dispatchNext() priority label", () => {
+  let tmpDir: string;
+  let logMock: ReturnType<typeof mock.method>;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "office-dispatch-test-"));
+    stubbedIssueLabels = [];
+    setLabelsCalls.length = 0;
+    logMock = mock.method(console, "log", () => {});
+  });
+
+  afterEach(() => {
+    logMock.mock.restore();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("applies priority:high label when issue is ready and unlabelled", async () => {
+    stubbedIssueLabels = ["status:ready"];
+    const result = await dispatchNext(minimalConfig, tmpDir, 42, "high");
+    assert.equal(result, false); // no pipeline label → false
+    const priorityCall = setLabelsCalls.find(([, add]) =>
+      add.includes("priority:high"),
+    );
+    assert.ok(priorityCall, "setLabels should have been called with priority:high");
+    assert.deepEqual(priorityCall![1], ["priority:high"]);
+    assert.deepEqual(priorityCall![2], []);
+  });
+
+  test("applies priority:low label when issue is ready and unlabelled", async () => {
+    stubbedIssueLabels = ["status:ready"];
+    await dispatchNext(minimalConfig, tmpDir, 42, "low");
+    const priorityCall = setLabelsCalls.find(([, add]) =>
+      add.includes("priority:low"),
+    );
+    assert.ok(priorityCall, "setLabels should have been called with priority:low");
+  });
+
+  test("does not re-apply priority:high when issue already has it", async () => {
+    stubbedIssueLabels = ["status:ready", "priority:high"];
+    await dispatchNext(minimalConfig, tmpDir, 42, "high");
+    const priorityCall = setLabelsCalls.find(([, add]) =>
+      add.includes("priority:high"),
+    );
+    assert.equal(
+      priorityCall,
+      undefined,
+      "setLabels should NOT be called with priority:high when already present",
+    );
+  });
+
+  test("returns false and applies no labels for a non-ready issue", async () => {
+    stubbedIssueLabels = ["status:in-progress"];
+    const result = await dispatchNext(minimalConfig, tmpDir, 42, "high");
+    assert.equal(result, false);
+    assert.equal(
+      setLabelsCalls.length,
+      0,
+      "no labels should be applied for a non-ready issue",
+    );
+  });
+
+  test("returns false when issue has no pipeline label (even after priority applied)", async () => {
+    stubbedIssueLabels = ["status:ready"];
+    // getPipelineLabel is mocked to return null
+    const result = await dispatchNext(minimalConfig, tmpDir, 42, undefined);
+    assert.equal(result, false);
   });
 });

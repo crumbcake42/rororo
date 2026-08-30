@@ -80,13 +80,9 @@ export function loadConfig(projectRoot?: string): OfficeConfig {
   const config: OfficeConfig = {
     project_name: (raw.project_name as string) ?? "",
     branch_strategy: (raw.branch_strategy as "tiered" | "simple") ?? "tiered",
-    notification_mode:
-      (raw.notification_mode as "watch" | "afk") ?? "watch",
-    afk: resolveAfkConfig(
-      (raw.afk as Record<string, string>) ?? {}
-    ),
-    dispatch_mode:
-      (raw.dispatch_mode as "manual" | "daemon") ?? "manual",
+    notification_mode: (raw.notification_mode as "watch" | "afk") ?? "watch",
+    afk: resolveAfkConfig((raw.afk as Record<string, string>) ?? {}),
+    dispatch_mode: (raw.dispatch_mode as "manual" | "daemon") ?? "manual",
     models: {
       opus:
         ((raw.models as Record<string, string>)?.opus as string) ??
@@ -99,8 +95,8 @@ export function loadConfig(projectRoot?: string): OfficeConfig {
     quality_gates: (raw.quality_gates as Record<string, QualityGate>) ?? {},
     adversarial: {
       max_rounds:
-        ((raw.adversarial as Record<string, unknown>)
-          ?.max_rounds as number) ?? 3,
+        ((raw.adversarial as Record<string, unknown>)?.max_rounds as number) ??
+        3,
       architect_directives:
         ((raw.adversarial as Record<string, unknown>)
           ?.architect_directives as string[]) ?? [],
@@ -131,10 +127,7 @@ export function getBaseBranch(config: OfficeConfig): string {
   return config.branch_strategy === "tiered" ? "dev" : "main";
 }
 
-export function getModelForRole(
-  config: OfficeConfig,
-  role: string
-): string {
+export function getModelForRole(config: OfficeConfig, role: string): string {
   const override = config.role_models[role];
   if (override) {
     const resolved = config.models[override as keyof typeof config.models];

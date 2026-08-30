@@ -6,10 +6,7 @@ import { resolve } from "node:path";
 import { loadConfig } from "./config.js";
 import { dispatchNext } from "./dispatch.js";
 import { getStatus, formatStatus } from "./status.js";
-import {
-  generateStandup,
-  launchInteractiveStandup,
-} from "./standup.js";
+import { generateStandup, launchInteractiveStandup } from "./standup.js";
 import { pause, resume, runDaemon } from "./daemon.js";
 import { launchCreateSession } from "./create.js";
 
@@ -36,16 +33,14 @@ program
     const dispatched = await dispatchNext(config, projectRoot, issueNumber);
     if (!dispatched) {
       console.log(
-        "No tasks ready for dispatch. Create an issue with status:ready to get started."
+        "No tasks ready for dispatch. Create an issue with status:ready to get started.",
       );
     }
   });
 
 program
   .command("create [topic]")
-  .description(
-    "Create a new issue through an interactive PM session"
-  )
+  .description("Create a new issue through an interactive PM session")
   .action(async (topic?: string) => {
     const config = loadConfig(projectRoot);
     await launchCreateSession(config, projectRoot, topic);
@@ -91,11 +86,7 @@ program
 program
   .command("start")
   .description("Start the autonomous dispatch daemon")
-  .option(
-    "--interval <seconds>",
-    "Poll interval in seconds",
-    "30"
-  )
+  .option("--interval <seconds>", "Poll interval in seconds", "30")
   .action(async (options: { interval: string }) => {
     const config = loadConfig(projectRoot);
     const intervalMs = parseInt(options.interval, 10) * 1000;
@@ -104,9 +95,7 @@ program
 
 program
   .command("preset <name>")
-  .description(
-    "Apply a stack preset (e.g., typescript-node, python)"
-  )
+  .description("Apply a stack preset (e.g., typescript-node, python)")
   .action((name: string) => {
     const presetPath = resolve(projectRoot, "presets", `${name}.yml`);
     let presetContent: string;
@@ -114,7 +103,7 @@ program
       presetContent = readFileSync(presetPath, "utf-8");
     } catch {
       console.error(
-        `Preset not found: ${name}\nAvailable presets: typescript-node, python`
+        `Preset not found: ${name}\nAvailable presets: typescript-node, python`,
       );
       process.exit(1);
     }
@@ -126,11 +115,16 @@ program
     const match = configContent.match(sectionPattern);
 
     if (!match) {
-      console.error("Could not find quality_gates section in office.config.yml");
+      console.error(
+        "Could not find quality_gates section in office.config.yml",
+      );
       process.exit(1);
     }
 
-    const updated = configContent.replace(sectionPattern, presetContent.trimEnd() + "\n");
+    const updated = configContent.replace(
+      sectionPattern,
+      presetContent.trimEnd() + "\n",
+    );
     writeFileSync(configPath, updated);
     console.log(`Applied preset: ${name}`);
     console.log("Quality gates updated in office.config.yml");

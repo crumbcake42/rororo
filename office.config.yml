@@ -25,6 +25,13 @@ branch_strategy: tiered
 #            empty or a human-block fires. Respects pause/resume toggle.
 dispatch_mode: manual
 
+# --- Daemon ------------------------------------------------------------------
+# Controls for the autonomous dispatch daemon (dispatch_mode: daemon).
+daemon:
+  # How often to poll for new tasks when the queue is empty (hibernation state).
+  # In seconds. While actively dispatching, the daemon re-checks immediately.
+  hibernation_interval: 300  # 5 minutes
+
 # --- Notification Mode -------------------------------------------------------
 # "watch" — blocking questions print to terminal, dispatch waits for response
 # "afk"   — blocking questions fire a webhook to Slack or SMS, user responds

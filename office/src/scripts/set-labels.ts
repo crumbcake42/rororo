@@ -3,7 +3,9 @@ import { setLabels } from "../github.js";
 const args = process.argv.slice(2);
 
 if (args.length < 2) {
-  console.error("Usage: set-labels <issue-number> <add-labels> [remove-labels]");
+  console.error(
+    "Usage: set-labels <issue-number> <add-labels> [remove-labels]",
+  );
   console.error("  Labels are comma-separated. Use empty string for none.");
   process.exit(1);
 }
@@ -14,8 +16,18 @@ if (isNaN(issueNumber)) {
   process.exit(1);
 }
 
-const labelsToAdd = args[1] ? args[1].split(",").map((l) => l.trim()).filter(Boolean) : [];
-const labelsToRemove = args[2] ? args[2].split(",").map((l) => l.trim()).filter(Boolean) : [];
+const labelsToAdd = args[1]
+  ? args[1]
+      .split(",")
+      .map((l) => l.trim())
+      .filter(Boolean)
+  : [];
+const labelsToRemove = args[2]
+  ? args[2]
+      .split(",")
+      .map((l) => l.trim())
+      .filter(Boolean)
+  : [];
 
 try {
   await setLabels(issueNumber, labelsToAdd, labelsToRemove);
@@ -24,11 +36,11 @@ try {
       issue: issueNumber,
       added: labelsToAdd,
       removed: labelsToRemove,
-    })
+    }),
   );
 } catch (error) {
   console.error(
-    `Failed to set labels: ${error instanceof Error ? error.message : String(error)}`
+    `Failed to set labels: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exit(1);
 }

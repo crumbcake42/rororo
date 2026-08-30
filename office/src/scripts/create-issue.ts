@@ -18,11 +18,11 @@ try {
       title: issue.title,
       url: issue.html_url,
       labels: issue.labels,
-    })
+    }),
   );
 } catch (error) {
   console.error(
-    `Failed to create issue: ${error instanceof Error ? error.message : String(error)}`
+    `Failed to create issue: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exit(1);
 }

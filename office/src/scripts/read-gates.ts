@@ -1,8 +1,14 @@
 import { readFileSync, appendFileSync } from "node:fs";
 import yaml from "js-yaml";
 
-const config = yaml.load(readFileSync("office.config.yml", "utf-8")) as Record<string, unknown>;
-const gates = (config.quality_gates ?? {}) as Record<string, { command?: string }>;
+const config = yaml.load(readFileSync("office.config.yml", "utf-8")) as Record<
+  string,
+  unknown
+>;
+const gates = (config.quality_gates ?? {}) as Record<
+  string,
+  { command?: string }
+>;
 const output = process.env.GITHUB_OUTPUT;
 
 if (!output) {

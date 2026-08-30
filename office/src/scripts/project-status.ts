@@ -15,19 +15,34 @@ try {
     },
     issues: {
       ready: report.ready.map((i) => ({ number: i.number, title: i.title })),
-      in_progress: report.inProgress.map((i) => ({ number: i.number, title: i.title })),
+      in_progress: report.inProgress.map((i) => ({
+        number: i.number,
+        title: i.title,
+      })),
       review: report.review.map((i) => ({ number: i.number, title: i.title })),
-      blocked_human: report.blockedHuman.map((i) => ({ number: i.number, title: i.title })),
-      blocked_dependency: report.blockedDependency.map((i) => ({ number: i.number, title: i.title })),
-      blocked_unclassified: report.blockedUnclassified.map((i) => ({ number: i.number, title: i.title })),
+      blocked_human: report.blockedHuman.map((i) => ({
+        number: i.number,
+        title: i.title,
+      })),
+      blocked_dependency: report.blockedDependency.map((i) => ({
+        number: i.number,
+        title: i.title,
+      })),
+      blocked_unclassified: report.blockedUnclassified.map((i) => ({
+        number: i.number,
+        title: i.title,
+      })),
       done: report.done.map((i) => ({ number: i.number, title: i.title })),
-      backlog: report.backlog.map((i) => ({ number: i.number, title: i.title })),
+      backlog: report.backlog.map((i) => ({
+        number: i.number,
+        title: i.title,
+      })),
     },
   };
   console.log(JSON.stringify(summary, null, 2));
 } catch (error) {
   console.error(
-    `Failed to get status: ${error instanceof Error ? error.message : String(error)}`
+    `Failed to get status: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exit(1);
 }

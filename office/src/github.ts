@@ -34,18 +34,17 @@ function getOctokit(): Octokit {
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
     throw new Error(
-      "GITHUB_TOKEN not set. Add it to .env or set it as an environment variable."
+      "GITHUB_TOKEN not set. Add it to .env or set it as an environment variable.",
     );
   }
   return new Octokit({ auth: token });
 }
 
 function getRepoInfo(): { owner: string; repo: string } {
-  const remote =
-    process.env.GITHUB_REPOSITORY ?? detectRemoteFromGit();
+  const remote = process.env.GITHUB_REPOSITORY ?? detectRemoteFromGit();
   if (!remote) {
     throw new Error(
-      "Cannot determine GitHub repository. Set GITHUB_REPOSITORY or run from a git repo with a GitHub remote."
+      "Cannot determine GitHub repository. Set GITHUB_REPOSITORY or run from a git repo with a GitHub remote.",
     );
   }
   const [owner, repo] = remote.split("/");
@@ -64,15 +63,11 @@ function detectRemoteFromGit(): string | null {
   }
 }
 
-function extractLabels(
-  labels: Array<{ name?: string } | string>
-): string[] {
-  return labels.map((l) => (typeof l === "string" ? l : l.name ?? ""));
+function extractLabels(labels: Array<{ name?: string } | string>): string[] {
+  return labels.map((l) => (typeof l === "string" ? l : (l.name ?? "")));
 }
 
-export async function listIssuesByLabel(
-  label: string
-): Promise<GitHubIssue[]> {
+export async function listIssuesByLabel(label: string): Promise<GitHubIssue[]> {
   const octokit = getOctokit();
   const { owner, repo } = getRepoInfo();
 
@@ -149,7 +144,7 @@ export async function getIssue(issueNumber: number): Promise<GitHubIssue> {
 }
 
 export async function getIssueComments(
-  issueNumber: number
+  issueNumber: number,
 ): Promise<GitHubComment[]> {
   const octokit = getOctokit();
   const { owner, repo } = getRepoInfo();
@@ -171,7 +166,7 @@ export async function getIssueComments(
 
 export async function addComment(
   issueNumber: number,
-  body: string
+  body: string,
 ): Promise<void> {
   const octokit = getOctokit();
   const { owner, repo } = getRepoInfo();
@@ -187,7 +182,7 @@ export async function addComment(
 export async function setLabels(
   issueNumber: number,
   labelsToAdd: string[],
-  labelsToRemove: string[]
+  labelsToRemove: string[],
 ): Promise<void> {
   const octokit = getOctokit();
   const { owner, repo } = getRepoInfo();
@@ -218,7 +213,7 @@ export async function setLabels(
 export async function createIssue(
   title: string,
   body: string,
-  labels: string[]
+  labels: string[],
 ): Promise<GitHubIssue> {
   const octokit = getOctokit();
   const { owner, repo } = getRepoInfo();
@@ -246,7 +241,7 @@ export async function createIssue(
 
 export async function listRecentPRs(
   state: "open" | "closed" | "all" = "all",
-  limit = 20
+  limit = 20,
 ): Promise<GitHubPR[]> {
   const octokit = getOctokit();
   const { owner, repo } = getRepoInfo();
@@ -275,7 +270,7 @@ export async function createPR(
   headBranch: string,
   baseBranch: string,
   title: string,
-  body: string
+  body: string,
 ): Promise<GitHubPR> {
   const octokit = getOctokit();
   const { owner, repo } = getRepoInfo();
@@ -301,9 +296,7 @@ export async function createPR(
 }
 
 export function getPipelineLabel(issue: GitHubIssue): string | null {
-  const pipelineLabel = issue.labels.find((l) =>
-    l.startsWith("pipeline:")
-  );
+  const pipelineLabel = issue.labels.find((l) => l.startsWith("pipeline:"));
   return pipelineLabel ? pipelineLabel.replace("pipeline:", "") : null;
 }
 

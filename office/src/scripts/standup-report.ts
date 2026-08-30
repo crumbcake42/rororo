@@ -24,7 +24,12 @@ try {
     }
   }
 
-  let recentPRs: Array<{ number: number; title: string; state: string; merged: boolean }> = [];
+  let recentPRs: Array<{
+    number: number;
+    title: string;
+    state: string;
+    merged: boolean;
+  }> = [];
   try {
     const prs = await listRecentPRs("all", 10);
     recentPRs = prs.map((pr) => ({
@@ -40,13 +45,28 @@ try {
   const standup = {
     generated_at: new Date().toISOString(),
     completed: report.done.map((i) => ({ number: i.number, title: i.title })),
-    in_progress: report.inProgress.map((i) => ({ number: i.number, title: i.title })),
+    in_progress: report.inProgress.map((i) => ({
+      number: i.number,
+      title: i.title,
+    })),
     blocked: {
-      human: report.blockedHuman.map((i) => ({ number: i.number, title: i.title })),
-      dependency: report.blockedDependency.map((i) => ({ number: i.number, title: i.title })),
-      unclassified: report.blockedUnclassified.map((i) => ({ number: i.number, title: i.title })),
+      human: report.blockedHuman.map((i) => ({
+        number: i.number,
+        title: i.title,
+      })),
+      dependency: report.blockedDependency.map((i) => ({
+        number: i.number,
+        title: i.title,
+      })),
+      unclassified: report.blockedUnclassified.map((i) => ({
+        number: i.number,
+        title: i.title,
+      })),
     },
-    ready_queue: report.ready.map((i) => ({ number: i.number, title: i.title })),
+    ready_queue: report.ready.map((i) => ({
+      number: i.number,
+      title: i.title,
+    })),
     review: report.review.map((i) => ({ number: i.number, title: i.title })),
     recent_commits: recentCommits,
     recent_prs: recentPRs,
@@ -56,7 +76,7 @@ try {
   console.log(JSON.stringify(standup, null, 2));
 } catch (error) {
   console.error(
-    `Failed to generate standup: ${error instanceof Error ? error.message : String(error)}`
+    `Failed to generate standup: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exit(1);
 }

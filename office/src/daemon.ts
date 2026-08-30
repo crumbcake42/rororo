@@ -135,6 +135,8 @@ export async function runDaemon(
     tasksDispatched: 0,
   });
 
+  await notifyDaemon(config, "Daemon started.");
+
   const shutdown = () => {
     console.log("\nDaemon shutting down.");
     process.exit(0);
@@ -142,13 +144,24 @@ export async function runDaemon(
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
+  let prevStatus: DaemonStatusValue = "active";
+
   while (true) {
     const state = loadState(projectRoot);
 
     if (state.status === "paused") {
+      if (prevStatus !== "paused") {
+        await notifyDaemon(config, "Daemon paused.");
+      }
+      prevStatus = "paused";
       await sleep(5_000);
       continue;
     }
+
+    if (prevStatus === "paused") {
+      await notifyDaemon(config, "Daemon resumed — checking for ready tasks.");
+    }
+    prevStatus = state.status;
 
     let dispatched = false;
     try {
@@ -167,6 +180,7 @@ export async function runDaemon(
         console.log("Task found — transitioning to active.");
       }
       saveState(projectRoot, state);
+      prevStatus = state.status;
       continue;
     }
 
@@ -178,6 +192,7 @@ export async function runDaemon(
         config,
         `Queue empty — hibernating. Polling every ${hibernationIntervalMs / 1000}s.`,
       );
+      prevStatus = "hibernation";
     }
 
     await sleep(hibernationIntervalMs);

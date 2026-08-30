@@ -42,6 +42,11 @@ Model routing rationale: Opus for judgment-critical roles, Sonnet for throughput
 ## Data Flow
 Issue (GitHub) → dispatch → worktree + agent → PR → quality gates (CI) → merge
 
+## Pipeline Resilience
+Each pipeline step's changes are committed to the worktree branch after the agent completes, using the message format `step N/M: role`. Steps that produce no file changes get no commit. On pipeline failure, the branch is pushed to the remote before worktree cleanup, preserving all completed work. On re-dispatch of a failed pipeline, the system detects completed steps from the commit history on the existing remote branch and resumes from the first incomplete step.
+
+Adversarial pipelines are excluded from incremental commits — they produce debate transcripts posted to the issue, not code changes, so the resume mechanism doesn't apply.
+
 ## Branch Strategy
 Configurable in `office.config.yml`:
 - **Tiered** (default): feature → dev → staging → main. Agent worktrees branch from dev.

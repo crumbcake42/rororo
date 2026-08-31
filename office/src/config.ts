@@ -155,6 +155,21 @@ export function loadConfig(projectRoot?: string): OfficeConfig {
   return config;
 }
 
+export function checkDispatchModeAdvisory(
+  config: OfficeConfig,
+  command: "dispatch" | "start",
+): void {
+  if (command === "dispatch" && config.dispatch_mode === "daemon") {
+    console.warn(
+      "Advisory: dispatch_mode is set to 'daemon' — the daemon should be managing dispatch. Run `office start` instead, or change dispatch_mode to 'manual'.",
+    );
+  } else if (command === "start" && config.dispatch_mode === "manual") {
+    console.warn(
+      "Advisory: dispatch_mode is set to 'manual' — the daemon is starting anyway. Change dispatch_mode to 'daemon' in office.config.yml to suppress this warning.",
+    );
+  }
+}
+
 export function getBaseBranch(config: OfficeConfig): string {
   return config.branch_strategy === "tiered" ? "dev" : "main";
 }

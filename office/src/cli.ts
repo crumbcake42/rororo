@@ -3,7 +3,7 @@
 import { Command } from "commander";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadConfig } from "./config.js";
+import { loadConfig, checkDispatchModeAdvisory } from "./config.js";
 import { dispatchNext } from "./dispatch.js";
 import { getStatus, formatStatus } from "./status.js";
 import { generateStandup, launchInteractiveStandup } from "./standup.js";
@@ -35,6 +35,7 @@ program
   .option("--priority <level>", "Set priority for this dispatch: high or low")
   .action(async (issue: string | undefined, options: { priority?: string }) => {
     const config = loadConfig(projectRoot);
+    checkDispatchModeAdvisory(config, "dispatch");
     const issueNumber = issue ? parseInt(issue, 10) : undefined;
     if (issue && isNaN(issueNumber!)) {
       console.error(`Invalid issue number: ${issue}`);
@@ -178,6 +179,7 @@ program
   .option("--interval <seconds>", "Poll interval in seconds", "30")
   .action(async (options: { interval: string }) => {
     const config = loadConfig(projectRoot);
+    checkDispatchModeAdvisory(config, "start");
     const intervalMs = parseInt(options.interval, 10) * 1000;
     await runDaemon(config, projectRoot, intervalMs);
   });

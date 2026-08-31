@@ -262,14 +262,11 @@ describe("dispatchIssue() signal handling", () => {
     );
   });
 
-  test("stale signal file is drained after pipeline completes normally", async () => {
+  test("stale signal file is consumed at dispatch start", async () => {
     const issue = makeIssue(44);
-    // Write signal before dispatch. The 2-step pipeline checks signals only
-    // between steps (after step 1), so this signal fires mid-pipeline and
-    // pauses. To test the drain path, we need a pipeline where the signal
-    // arrives during the LAST step — but our mocks resolve instantly so we
-    // can't time that. Instead, test directly: write signal, run a 1-step
-    // pipeline, and verify the drain call at the end consumes it.
+    // dispatchIssue drains any pre-existing signal at start to prevent
+    // TOCTOU from prior runs. The drain-at-end path (for signals arriving
+    // during the last step) is not testable with instant-resolving mocks.
 
     // Create a 1-step pipeline so no mid-pipeline check fires.
     writeFileSync(

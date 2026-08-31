@@ -273,12 +273,17 @@ export async function runDaemon(
         state.tasksDispatched++;
       }
       state.lastDispatch = new Date().toISOString();
-      if (state.status === "hibernation") {
+      if (budget.shouldWindDown()) {
+        state.status = "paused";
+        prevStatus = "paused";
+      } else if (state.status === "hibernation") {
         state.status = "active";
         console.log("Task found — transitioning to active.");
       }
       saveState(projectRoot, state);
-      prevStatus = state.status;
+      if (prevStatus !== "paused") {
+        prevStatus = state.status;
+      }
       continue;
     }
 

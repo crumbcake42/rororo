@@ -46,15 +46,14 @@ program
       process.exit(1);
     }
     if (priority && !issueNumber) {
-      console.warn(
-        `Warning: --priority is ignored without an explicit issue number.`,
-      );
+      console.error(`--priority requires an explicit issue number.`);
+      process.exit(1);
     }
     const result = await dispatchNext(
       config,
       projectRoot,
       issueNumber,
-      issueNumber ? priority : undefined,
+      priority,
     );
     if (!result) {
       console.log(

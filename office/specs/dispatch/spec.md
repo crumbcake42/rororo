@@ -61,9 +61,14 @@ The dispatch system reads ready tasks, assembles context, and invokes agents thr
 - WHEN the agent produces no stdout or stderr data for `agent_idle_timeout` seconds while stdout is still open AND HEAD has not moved forward since the agent was spawned
 - THEN the process is killed and the step fails with an idle timeout error
 
-### Scenario: Agent completes work but process lingers with stdout open
+### Scenario: Agent completes work but process lingers with stdout open (idle)
 - GIVEN an agent is invoked with `--print`
 - WHEN the agent produces no stdout or stderr data for `agent_idle_timeout` seconds while stdout is still open BUT HEAD has moved forward (agent committed work)
+- THEN the process is killed and the step is treated as a **successful** completion — the committed work is preserved
+
+### Scenario: Agent exceeds max timeout after committing work
+- GIVEN an agent is invoked with `--print`
+- WHEN the agent exceeds `agent_max_timeout` seconds total runtime BUT HEAD has moved forward (agent committed work)
 - THEN the process is killed and the step is treated as a **successful** completion — the committed work is preserved
 
 ### Scenario: Agent blocks during pipeline

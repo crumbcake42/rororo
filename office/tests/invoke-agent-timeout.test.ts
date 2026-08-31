@@ -365,6 +365,34 @@ describe("invokeAgent() process lifecycle", () => {
     assert.equal(result, "");
   });
 
+  test("max timeout kill resolves as success when agent committed work", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+
+    const shortMaxConfig = {
+      dispatch: { agent_idle_timeout: 300, agent_max_timeout: 60 },
+    } as unknown as OfficeConfig;
+
+    mockHead = "aaa111";
+    const promise = invokeAgent(shortMaxConfig, tmpDir, tmpDir, testStep, "ctx");
+    await Promise.resolve();
+    const child = currentChild!;
+
+    // Keep resetting idle timer so only max timer fires
+    mock.timers.tick(30_000);
+    child.stdout.emit("data", Buffer.from("output"));
+
+    // Simulate agent committing
+    mockHead = "bbb222";
+
+    mock.timers.tick(30_001); // past 60s max timeout
+    assert.equal(child.kill.mock.callCount(), 1);
+    child.emit("close", null);
+
+    // Should resolve as success because HEAD moved
+    const result = await promise;
+    assert.equal(result, "");
+  });
+
   test("idle kill rejects as failure when agent did not commit", async () => {
     mock.timers.enable({ apis: ["setTimeout"] });
 

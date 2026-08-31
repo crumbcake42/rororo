@@ -51,8 +51,8 @@ dispatch:
   # Absolute ceiling regardless of activity. Safety net for runaway agents.
   agent_max_timeout: 3600     # 60 minutes hard cap
 
-  # Maximum revision rounds triggered by reviewer `revise` findings.
-  # Set to 0 to disable auto-revision entirely.
+  # Auto-revision from reviewer findings. 0 = disabled, 1 = enabled.
+  # When enabled, one revision round runs: implementer fix → confirmation review.
   max_revision_rounds: 1
 
 # --- Notification Mode -------------------------------------------------------

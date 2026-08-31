@@ -1,10 +1,13 @@
 import { test, describe, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import type { ReviewFinding } from "../src/dispatch.js";
+import type { ReviewFinding, Pipeline } from "../src/dispatch.js";
 
 // ---------------------------------------------------------------------------
 // Module-level mock setup — must precede dynamic imports
 // ---------------------------------------------------------------------------
+
+let createIssueCalls: Array<{ title: string; body: string; labels: string[] }> =
+  [];
 
 mock.module("node:child_process", {
   namedExports: {
@@ -24,7 +27,19 @@ mock.module(new URL("../src/github.js", import.meta.url).href, {
     listIssuesByLabel: async () => [],
     getIssueComments: async () => [],
     addComment: async () => {},
-    createIssue: async () => ({ number: 0, labels: [], title: "", html_url: "" }),
+    createIssue: async (
+      title: string,
+      body: string,
+      labels: string[],
+    ) => {
+      createIssueCalls.push({ title, body, labels });
+      return {
+        number: 100 + createIssueCalls.length,
+        labels,
+        title,
+        html_url: "",
+      };
+    },
     getPR: async () => ({ number: 0, title: "", state: "open", head_branch: "", base_branch: "", html_url: "" }),
     createPR: async () => ({ html_url: "" }),
     getPipelineLabel: () => null,
@@ -32,7 +47,7 @@ mock.module(new URL("../src/github.js", import.meta.url).href, {
   },
 });
 
-const { parseReviewFindings } = await import("../src/dispatch.js");
+const { parseReviewFindings, createFollowUpIssues, buildRevisionContext, buildConfirmationContext } = await import("../src/dispatch.js");
 // Verify re-export from review.ts resolves to the same function
 const reviewModule = await import("../src/review.js");
 const parseFromReview = reviewModule.parseReviewFindings;
@@ -353,5 +368,154 @@ describe("parseReviewFindings re-export from review.ts", () => {
     const fromDispatch = parseReviewFindings(output);
     const fromReview = parseFromReview(output);
     assert.deepEqual(fromDispatch, fromReview);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createFollowUpIssues() — integration tests
+// ---------------------------------------------------------------------------
+
+const testIssue = {
+  number: 42,
+  title: "Test issue",
+  body: "",
+  labels: ["status:in-progress", "pipeline:backend-feature"],
+  assignees: [],
+  state: "open",
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+  html_url: "",
+};
+
+const testPipeline: Pipeline = {
+  name: "backend-feature",
+  description: "test pipeline",
+  steps: [{ role: "implementer", description: "implement" }],
+};
+
+describe("createFollowUpIssues()", () => {
+  let logMock: ReturnType<typeof mock.method>;
+
+  beforeEach(() => {
+    createIssueCalls = [];
+    logMock = mock.method(console, "log", () => {});
+  });
+
+  afterEach(() => {
+    logMock.mock.restore();
+  });
+
+  test("creates no issues when findings array is empty", async () => {
+    await createFollowUpIssues(testIssue, [], testPipeline);
+    assert.equal(createIssueCalls.length, 0);
+  });
+
+  test("creates one issue per finding", async () => {
+    const findings: ReviewFinding[] = [
+      makeValidFinding({ file: "a.ts", disposition: "follow-up" }),
+      makeValidFinding({ file: "b.ts", disposition: "follow-up" }),
+    ];
+    await createFollowUpIssues(testIssue, findings, testPipeline);
+    assert.equal(createIssueCalls.length, 2);
+  });
+
+  test("includes status:backlog and parent pipeline label", async () => {
+    const findings: ReviewFinding[] = [
+      makeValidFinding({ disposition: "follow-up" }),
+    ];
+    await createFollowUpIssues(testIssue, findings, testPipeline);
+    assert.deepEqual(createIssueCalls[0].labels, [
+      "status:backlog",
+      "pipeline:backend-feature",
+    ]);
+  });
+
+  test("title references parent issue number", async () => {
+    const findings: ReviewFinding[] = [
+      makeValidFinding({
+        description: "Short desc",
+        disposition: "follow-up",
+      }),
+    ];
+    await createFollowUpIssues(testIssue, findings, testPipeline);
+    assert.match(createIssueCalls[0].title, /Follow-up from #42/);
+  });
+
+  test("truncates long descriptions in title", async () => {
+    const findings: ReviewFinding[] = [
+      makeValidFinding({
+        description: "A".repeat(100),
+        disposition: "follow-up",
+      }),
+    ];
+    await createFollowUpIssues(testIssue, findings, testPipeline);
+    assert.ok(createIssueCalls[0].title.length < 100);
+    assert.match(createIssueCalls[0].title, /\.\.\.$/);
+  });
+
+  test("body includes file, severity, description, and recommendation", async () => {
+    const findings: ReviewFinding[] = [
+      makeValidFinding({
+        file: "src/target.ts",
+        line: 42,
+        severity: "blocking",
+        description: "Must fix this",
+        recommendation: "Do the thing",
+        disposition: "follow-up",
+      }),
+    ];
+    await createFollowUpIssues(testIssue, findings, testPipeline);
+    const body = createIssueCalls[0].body;
+    assert.match(body, /src\/target\.ts/);
+    assert.match(body, /line 42/);
+    assert.match(body, /blocking/);
+    assert.match(body, /Must fix this/);
+    assert.match(body, /Do the thing/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildRevisionContext() — context assembly tests
+// ---------------------------------------------------------------------------
+
+describe("buildRevisionContext()", () => {
+  test("includes issue number and title", () => {
+    const findings: ReviewFinding[] = [makeValidFinding()];
+    const ctx = buildRevisionContext(testIssue, findings);
+    assert.match(ctx, /#42/);
+    assert.match(ctx, /Test issue/);
+  });
+
+  test("includes finding file, description, and recommendation", () => {
+    const findings: ReviewFinding[] = [
+      makeValidFinding({
+        file: "src/important.ts",
+        description: "Critical bug here",
+        recommendation: "Fix the bug",
+      }),
+    ];
+    const ctx = buildRevisionContext(testIssue, findings);
+    assert.match(ctx, /src\/important\.ts/);
+    assert.match(ctx, /Critical bug here/);
+    assert.match(ctx, /Fix the bug/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildConfirmationContext() — context assembly tests
+// ---------------------------------------------------------------------------
+
+describe("buildConfirmationContext()", () => {
+  test("includes issue number and title", () => {
+    const findings: ReviewFinding[] = [makeValidFinding()];
+    const ctx = buildConfirmationContext(testIssue, findings);
+    assert.match(ctx, /#42/);
+    assert.match(ctx, /Test issue/);
+  });
+
+  test("mentions confirmation review scope", () => {
+    const findings: ReviewFinding[] = [makeValidFinding()];
+    const ctx = buildConfirmationContext(testIssue, findings);
+    assert.match(ctx, /confirmation/i);
   });
 });

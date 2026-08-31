@@ -706,7 +706,7 @@ async function applyStopSignal(
 ): Promise<DispatchResult> {
   const isPause = signal !== "cancel" && (signal === "pause" || windDown);
   const commentReason = windDown
-    ? `Usage budget wind-down triggered: ${budget!.reason()}. Paused after ${stopPoint}.`
+    ? `Usage budget wind-down triggered: ${budget?.reason() ?? "unknown reason"}. Paused after ${stopPoint}.`
     : signal === "pause"
       ? `Paused by user request after ${stopPoint}.`
       : `Cancelled by user request after ${stopPoint}.`;
@@ -729,7 +729,7 @@ async function applyStopSignal(
   return isPause ? "paused" : "cancelled";
 }
 
-function buildRevisionContext(
+export function buildRevisionContext(
   issue: GitHubIssue,
   findings: ReviewFinding[],
 ): string {
@@ -750,7 +750,7 @@ function buildRevisionContext(
   return parts.join("\n");
 }
 
-function buildConfirmationContext(
+export function buildConfirmationContext(
   issue: GitHubIssue,
   originalFindings: ReviewFinding[],
 ): string {
@@ -774,7 +774,7 @@ function buildConfirmationContext(
   return parts.join("\n");
 }
 
-async function createFollowUpIssues(
+export async function createFollowUpIssues(
   issue: GitHubIssue,
   findings: ReviewFinding[],
   pipeline: Pipeline,
@@ -870,7 +870,7 @@ async function runPostReviewRevisions(
       );
     }
 
-    console.log(`\n--- Revision ${round}/${maxRounds}: implementer ---`);
+    console.log(`\n--- Revision round: implementer ---`);
     const implStep: PipelineStep = {
       role: "implementer",
       description: "Address reviewer revision findings",

@@ -458,6 +458,8 @@ export function invokeAgent(
       if (graceTimer !== null) clearTimeout(graceTimer);
 
       if (killed && !killedAfterOutput) {
+        // Applies to both idle and max timeout kills: if the agent
+        // committed work (HEAD moved), treat the kill as success.
         let agentCommitted = false;
         if (headBefore !== null) {
           try {
@@ -467,7 +469,7 @@ export function invokeAgent(
             }).trim();
             agentCommitted = headBefore !== headAfter;
           } catch {
-            // Worktree may already be cleaned up
+            // git error during commit check
           }
         }
         if (agentCommitted) {

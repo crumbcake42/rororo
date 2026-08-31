@@ -56,10 +56,15 @@ The dispatch system reads ready tasks, assembles context, and invokes agents thr
 - WHEN stdout closes (output complete) but the process does not exit within 30 seconds
 - THEN the process is killed and the step is treated as a **successful** completion — both the idle timer and the max timer are cancelled after output is complete
 
-### Scenario: Agent hangs mid-output
+### Scenario: Agent hangs mid-output without committing
 - GIVEN an agent is invoked with `--print`
-- WHEN the agent produces no stdout or stderr data for `agent_idle_timeout` seconds while stdout is still open
+- WHEN the agent produces no stdout or stderr data for `agent_idle_timeout` seconds while stdout is still open AND HEAD has not moved forward since the agent was spawned
 - THEN the process is killed and the step fails with an idle timeout error
+
+### Scenario: Agent completes work but process lingers with stdout open
+- GIVEN an agent is invoked with `--print`
+- WHEN the agent produces no stdout or stderr data for `agent_idle_timeout` seconds while stdout is still open BUT HEAD has moved forward (agent committed work)
+- THEN the process is killed and the step is treated as a **successful** completion — the committed work is preserved
 
 ### Scenario: Agent blocks during pipeline
 - GIVEN an agent is executing a pipeline step

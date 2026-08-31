@@ -58,11 +58,7 @@ export interface UsageBudget {
 export type PipelineSignal = "pause" | "cancel";
 
 export type DispatchResult =
-  | "completed"
-  | "paused"
-  | "cancelled"
-  | "blocked"
-  | "failed";
+  "completed" | "paused" | "cancelled" | "blocked" | "failed";
 
 interface SignalFile {
   action: PipelineSignal;
@@ -362,6 +358,7 @@ export function invokeAgent(
   const maxTimeoutSecs = config.dispatch.agent_max_timeout;
   const idleMs = idleTimeoutSecs * 1000;
   const maxMs = maxTimeoutSecs * 1000;
+  const exitGraceMs = 30_000;
 
   console.log(`Invoking ${step.role} agent (${model}) in ${worktreePath}...`);
 
@@ -375,11 +372,15 @@ export function invokeAgent(
     let stdout = "";
     let killed = false;
     let killReason = "";
+    let killedAfterOutput = false;
+    let stdoutEnded = false;
+    let graceTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const killChild = (reason: string) => {
+    const killChild = (reason: string, afterOutput = false) => {
       if (killed) return;
       killed = true;
       killReason = reason;
+      killedAfterOutput = afterOutput;
       child.kill();
     };
 
@@ -390,6 +391,7 @@ export function invokeAgent(
     );
 
     const resetIdleTimer = () => {
+      if (stdoutEnded) return;
       clearTimeout(idleTimer);
       idleTimer = setTimeout(
         () =>
@@ -414,6 +416,22 @@ export function invokeAgent(
       }
     });
 
+    // Output complete: cancel idle timer, start short grace period.
+    // If the process lingers past the grace period it is killed as success —
+    // the work product is committed, the hang is an external CLI behaviour.
+    child.stdout.on("end", () => {
+      stdoutEnded = true;
+      clearTimeout(idleTimer);
+      graceTimer = setTimeout(
+        () =>
+          killChild(
+            `lingered ${exitGraceMs / 1000}s after output ended — treating as success`,
+            true,
+          ),
+        exitGraceMs,
+      );
+    });
+
     child.stderr.on("data", (chunk: Buffer) => {
       resetIdleTimer();
       process.stderr.write(chunk);
@@ -425,10 +443,11 @@ export function invokeAgent(
     child.on("close", (code) => {
       clearTimeout(idleTimer);
       clearTimeout(maxTimer);
+      if (graceTimer !== null) clearTimeout(graceTimer);
 
-      if (killed) {
+      if (killed && !killedAfterOutput) {
         promiseReject(new Error(`Agent ${step.role} killed: ${killReason}`));
-      } else if (code !== 0) {
+      } else if (!killed && code !== 0) {
         promiseReject(
           new Error(`Agent ${step.role} failed with exit code ${code}`),
         );
@@ -440,6 +459,7 @@ export function invokeAgent(
     child.on("error", (err) => {
       clearTimeout(idleTimer);
       clearTimeout(maxTimer);
+      if (graceTimer !== null) clearTimeout(graceTimer);
       promiseReject(
         new Error(`Agent ${step.role} failed to start: ${err.message}`),
       );
@@ -604,8 +624,7 @@ export async function dispatchNext(
     if (priority) {
       const priorityLabel = `priority:${priority}`;
       if (!issue.labels.includes(priorityLabel)) {
-        const opposite =
-          priority === "high" ? "priority:low" : "priority:high";
+        const opposite = priority === "high" ? "priority:low" : "priority:high";
         const remove = issue.labels.includes(opposite) ? [opposite] : [];
         await setLabels(issue.number, [priorityLabel], remove);
         issue.labels.push(priorityLabel);
@@ -749,7 +768,8 @@ export async function dispatchIssue(
         const windDown = budget?.shouldWindDown() ?? false;
 
         if (signal === "cancel" || signal === "pause" || windDown) {
-          const isPause = signal !== "cancel" && (signal === "pause" || windDown);
+          const isPause =
+            signal !== "cancel" && (signal === "pause" || windDown);
           const pausePoint = `step ${i + 1} of ${pipeline.steps.length} (${step.role})`;
           const commentReason = windDown
             ? `Usage budget wind-down triggered: ${budget!.reason()}. Paused after ${pausePoint}.`

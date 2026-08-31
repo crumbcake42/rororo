@@ -7,7 +7,15 @@ import { loadConfig } from "./config.js";
 import { dispatchNext } from "./dispatch.js";
 import { getStatus, formatStatus } from "./status.js";
 import { generateStandup, launchInteractiveStandup } from "./standup.js";
-import { daemonStatus, pause, resume, runDaemon } from "./daemon.js";
+import {
+  cancelPipeline,
+  daemonStatus,
+  pauseDaemon,
+  pausePipeline,
+  resumeDaemon,
+  resumePipeline,
+  runDaemon,
+} from "./daemon.js";
 import { launchCreateSession } from "./create.js";
 import { reviewPR } from "./review.js";
 
@@ -24,7 +32,8 @@ program
   .description(
     "Dispatch a ready task to an agent pipeline. Optionally specify an issue number.",
   )
-  .action(async (issue?: string) => {
+  .option("--priority <level>", "Set priority for this dispatch: high or low")
+  .action(async (issue: string | undefined, options: { priority?: string }) => {
     const config = loadConfig(projectRoot);
     if (config.dispatch_mode === "daemon") {
       console.warn(
@@ -36,8 +45,22 @@ program
       console.error(`Invalid issue number: ${issue}`);
       process.exit(1);
     }
-    const dispatched = await dispatchNext(config, projectRoot, issueNumber);
-    if (!dispatched) {
+    const priority = options.priority as "high" | "low" | undefined;
+    if (priority && priority !== "high" && priority !== "low") {
+      console.error(`Invalid priority: ${priority}. Use "high" or "low".`);
+      process.exit(1);
+    }
+    if (priority && !issueNumber) {
+      console.error(`--priority requires an explicit issue number.`);
+      process.exit(1);
+    }
+    const result = await dispatchNext(
+      config,
+      projectRoot,
+      issueNumber,
+      priority,
+    );
+    if (!result) {
       console.log(
         "No tasks ready for dispatch. Create an issue with status:ready to get started.",
       );
@@ -98,17 +121,53 @@ program
   });
 
 program
-  .command("pause")
-  .description("Pause the daemon dispatch loop")
-  .action(() => {
-    pause(projectRoot);
+  .command("pause [issue]")
+  .description(
+    "Pause the daemon (no args), or signal a running pipeline to pause at the next step boundary (with issue number).",
+  )
+  .action(async (issue?: string) => {
+    if (issue) {
+      const issueNumber = parseInt(issue, 10);
+      if (isNaN(issueNumber)) {
+        console.error(`Invalid issue number: ${issue}`);
+        process.exit(1);
+      }
+      await pausePipeline(projectRoot, issueNumber);
+    } else {
+      pauseDaemon(projectRoot);
+    }
   });
 
 program
-  .command("resume")
-  .description("Resume the daemon dispatch loop")
-  .action(() => {
-    resume(projectRoot);
+  .command("cancel <issue>")
+  .description(
+    "Signal a running pipeline to cancel gracefully at the next step boundary.",
+  )
+  .action(async (issue: string) => {
+    const issueNumber = parseInt(issue, 10);
+    if (isNaN(issueNumber)) {
+      console.error(`Invalid issue number: ${issue}`);
+      process.exit(1);
+    }
+    await cancelPipeline(projectRoot, issueNumber);
+  });
+
+program
+  .command("resume [issue]")
+  .description(
+    "Resume the daemon (no args), or re-label a paused pipeline issue as status:ready (with issue number).",
+  )
+  .action(async (issue?: string) => {
+    if (issue) {
+      const issueNumber = parseInt(issue, 10);
+      if (isNaN(issueNumber)) {
+        console.error(`Invalid issue number: ${issue}`);
+        process.exit(1);
+      }
+      await resumePipeline(projectRoot, issueNumber);
+    } else {
+      resumeDaemon(projectRoot);
+    }
   });
 
 program

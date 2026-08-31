@@ -9,11 +9,20 @@ Tasks are managed as GitHub Issues with labels for state management.
 | `status:backlog` | Identified but not ready for work |
 | `status:ready` | Context is sufficient, can be dispatched |
 | `status:in-progress` | An agent has been dispatched and is working |
+| `status:paused` | Pipeline paused by user or wind-down — resume with `office resume <issue>` |
 | `status:review` | Work complete, awaiting review |
 | `status:done` | Merged and verified |
 | `status:blocked-human` | Waiting on a human decision or information |
 | `status:blocked-dependency` | Waiting on another task to complete |
 | `status:blocked-unclassified` | Blocked for a reason that needs triage |
+
+## Priority Labels
+
+| Label | Meaning |
+|---|---|
+| `priority:high` | Dispatched before normal and low priority tasks |
+| *(no label)* | Normal priority (default) |
+| `priority:low` | Dispatched after normal and high priority tasks |
 
 ## Blocking
 

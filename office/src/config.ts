@@ -18,6 +18,12 @@ export interface DispatchConfig {
   agent_max_timeout: number;
 }
 
+export interface DaemonConfig {
+  hibernation_interval: number;
+  session_budget_minutes: number;
+  usage_threshold_pct: number;
+}
+
 export interface AfkConfig {
   slack_webhook_url: string;
   twilio_sid: string;
@@ -41,6 +47,7 @@ export interface OfficeConfig {
   afk: AfkConfig;
   dispatch_mode: "manual" | "daemon";
   dispatch: DispatchConfig;
+  daemon: DaemonConfig;
   models: {
     opus: string;
     sonnet: string;
@@ -96,6 +103,17 @@ export function loadConfig(projectRoot?: string): OfficeConfig {
       agent_max_timeout:
         ((raw.dispatch as Record<string, unknown>)
           ?.agent_max_timeout as number) ?? 3600,
+    },
+    daemon: {
+      hibernation_interval:
+        ((raw.daemon as Record<string, unknown>)
+          ?.hibernation_interval as number) ?? 300,
+      session_budget_minutes:
+        ((raw.daemon as Record<string, unknown>)
+          ?.session_budget_minutes as number) ?? 0,
+      usage_threshold_pct:
+        ((raw.daemon as Record<string, unknown>)
+          ?.usage_threshold_pct as number) ?? 80,
     },
     models: {
       opus:

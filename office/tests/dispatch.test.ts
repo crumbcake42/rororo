@@ -272,6 +272,8 @@ describe("resumePipeline()", () => {
 // dispatchNext() priority label application
 // ---------------------------------------------------------------------------
 
+// Safe because mocked getPipelineLabel returns null, so dispatchNext
+// short-circuits before any config field is accessed.
 const minimalConfig = {} as unknown as OfficeConfig;
 
 describe("dispatchNext() priority label", () => {

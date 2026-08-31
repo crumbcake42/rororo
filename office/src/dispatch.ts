@@ -57,6 +57,13 @@ export interface UsageBudget {
 
 export type PipelineSignal = "pause" | "cancel";
 
+export type DispatchResult =
+  | "completed"
+  | "paused"
+  | "cancelled"
+  | "blocked"
+  | "skipped";
+
 interface SignalFile {
   action: PipelineSignal;
 }
@@ -106,11 +113,21 @@ const PRIORITY_ORDER: Record<string, number> = {
 };
 const PRIORITY_NORMAL = 1;
 
-function getPriorityRank(labels: string[]): number {
+export function getPriorityRank(labels: string[]): number {
   for (const label of labels) {
     if (label in PRIORITY_ORDER) return PRIORITY_ORDER[label];
   }
   return PRIORITY_NORMAL;
+}
+
+export function sortByPriority<T extends { number: number; labels: string[] }>(
+  issues: T[],
+): T[] {
+  return [...issues].sort((a, b) => {
+    const rankDiff = getPriorityRank(a.labels) - getPriorityRank(b.labels);
+    if (rankDiff !== 0) return rankDiff;
+    return a.number - b.number;
+  });
 }
 
 function remoteBranchExists(projectRoot: string, branch: string): boolean {
@@ -574,7 +591,7 @@ export async function dispatchNext(
   issueNumber?: number,
   priority?: "high" | "low",
   budget?: UsageBudget,
-): Promise<boolean> {
+): Promise<DispatchResult | false> {
   let issue: GitHubIssue;
 
   if (issueNumber) {
@@ -601,12 +618,8 @@ export async function dispatchNext(
       console.log("No tasks in status:ready.");
       return false;
     }
-    readyIssues.sort((a, b) => {
-      const rankDiff = getPriorityRank(a.labels) - getPriorityRank(b.labels);
-      if (rankDiff !== 0) return rankDiff;
-      return a.number - b.number;
-    });
-    issue = readyIssues[0];
+    const sorted = sortByPriority(readyIssues);
+    issue = sorted[0];
   }
 
   const pipelineName = getPipelineLabel(issue);
@@ -616,8 +629,14 @@ export async function dispatchNext(
     return false;
   }
 
-  await dispatchIssue(config, projectRoot, issue, pipelineName, budget);
-  return true;
+  const result = await dispatchIssue(
+    config,
+    projectRoot,
+    issue,
+    pipelineName,
+    budget,
+  );
+  return result;
 }
 
 export async function dispatchIssue(
@@ -626,7 +645,7 @@ export async function dispatchIssue(
   issue: GitHubIssue,
   pipelineName: string,
   budget?: UsageBudget,
-): Promise<void> {
+): Promise<DispatchResult> {
   const pipeline = loadPipeline(projectRoot, pipelineName);
   const baseBranch = getBaseBranch(config);
   const branch = branchName(issue.number, issue.title, pipelineName);
@@ -660,7 +679,7 @@ export async function dispatchIssue(
         comments,
         pipeline,
       );
-      return;
+      return "blocked";
     }
 
     const completedSteps = resuming
@@ -693,7 +712,7 @@ export async function dispatchIssue(
         console.log(
           `Blocked on user input at step ${i + 1}. Respond on the issue to continue.`,
         );
-        return;
+        return "blocked";
       }
 
       if (completedSteps.has(i)) {
@@ -753,7 +772,7 @@ export async function dispatchIssue(
           console.log(
             `\n${isPause ? "Paused" : "Cancelled"} pipeline for #${issue.number} after ${pausePoint}.`,
           );
-          return;
+          return isPause ? "paused" : "cancelled";
         }
       }
     }
@@ -786,6 +805,7 @@ export async function dispatchIssue(
     await setLabels(issue.number, ["status:review"], ["status:in-progress"]);
 
     console.log(`\nPipeline complete for #${issue.number}. Status: review.`);
+    return "completed";
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
@@ -808,6 +828,7 @@ export async function dispatchIssue(
     });
 
     console.error(`\nPipeline failed for #${issue.number}: ${message}`);
+    return "skipped";
   } finally {
     try {
       cleanupWorktree(projectRoot, worktree.path, branch);

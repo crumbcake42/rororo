@@ -14,7 +14,7 @@
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "format": "npx prettier --write src/",
     "format:check": "npx prettier --check src/",
-    "test": "tsc -p tsconfig.test.json && node --experimental-test-module-mocks --test dist-test/tests/daemon.test.js dist-test/tests/dispatch.test.js dist-test/tests/dispatch-priority.test.js dist-test/tests/review.test.js"
+    "test": "tsc -p tsconfig.test.json && node --experimental-test-module-mocks --test dist-test/tests/daemon.test.js dist-test/tests/dispatch.test.js dist-test/tests/dispatch-priority.test.js dist-test/tests/dispatch-signal.test.js dist-test/tests/review.test.js"
   },
   "dependencies": {
     "@octokit/rest": "^21.0.0",

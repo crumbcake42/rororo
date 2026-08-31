@@ -253,9 +253,9 @@ export async function runDaemon(
       continue;
     }
 
-    let dispatched = false;
+    let result: Awaited<ReturnType<typeof dispatchNext>> = false;
     try {
-      dispatched = await dispatchNext(
+      result = await dispatchNext(
         config,
         projectRoot,
         undefined,
@@ -268,8 +268,10 @@ export async function runDaemon(
       await notifyDaemon(config, `Dispatch error: ${message}`);
     }
 
-    if (dispatched) {
-      state.tasksDispatched++;
+    if (result) {
+      if (result === "completed") {
+        state.tasksDispatched++;
+      }
       state.lastDispatch = new Date().toISOString();
       if (state.status === "hibernation") {
         state.status = "active";

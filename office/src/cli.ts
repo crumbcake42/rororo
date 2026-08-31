@@ -50,13 +50,13 @@ program
         `Warning: --priority is ignored without an explicit issue number.`,
       );
     }
-    const dispatched = await dispatchNext(
+    const result = await dispatchNext(
       config,
       projectRoot,
       issueNumber,
       priority,
     );
-    if (!dispatched) {
+    if (!result) {
       console.log(
         "No tasks ready for dispatch. Create an issue with status:ready to get started.",
       );

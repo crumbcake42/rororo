@@ -99,7 +99,13 @@ export function parseReviewFindings(output: string): ReviewFinding[] {
       );
       return [];
     }
-    return parsed.filter(isValidFinding);
+    return parsed.filter((item, idx) => {
+      const valid = isValidFinding(item);
+      if (!valid) {
+        console.warn(`  Finding at index ${idx} is malformed — skipping.`);
+      }
+      return valid;
+    });
   } catch {
     console.warn(
       "  Failed to parse findings block as JSON — treating as zero findings.",
@@ -938,6 +944,7 @@ async function runPostReviewRevisions(
       confirmStep,
       confirmContext,
       true,
+      true,
     );
     budget?.recordAgentTime(Date.now() - reviewStart);
 
@@ -1123,6 +1130,7 @@ export async function dispatchIssue(
         worktree.path,
         step,
         context,
+        isReviewer,
         isReviewer,
       );
       const stepElapsed = Date.now() - stepStart;

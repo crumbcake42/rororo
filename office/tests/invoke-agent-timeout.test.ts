@@ -97,13 +97,22 @@ describe("invokeAgent() process lifecycle", () => {
     assert.equal(result, "");
   });
 
-  test("rejects when process exits with non-zero code", async () => {
+  test("rejects when process exits with non-zero code while stdout is open", async () => {
+    const promise = invokeAgent(testConfig, tmpDir, tmpDir, testStep, "ctx");
+    await Promise.resolve();
+    const child = currentChild!;
+    child.emit("close", 1);
+    await assert.rejects(promise, /failed with exit code 1/);
+  });
+
+  test("resolves when process exits with non-zero code after stdout ends", async () => {
     const promise = invokeAgent(testConfig, tmpDir, tmpDir, testStep, "ctx");
     await Promise.resolve();
     const child = currentChild!;
     child.stdout.emit("end");
     child.emit("close", 1);
-    await assert.rejects(promise, /failed with exit code 1/);
+    const result = await promise;
+    assert.equal(result, "");
   });
 
   test("resolves when process lingers past exit grace period after stdout ends", async () => {
@@ -305,6 +314,22 @@ describe("invokeAgent() process lifecycle", () => {
 
     // Process exits cleanly within the 30s grace period
     child.emit("close", 0);
+    const result = await promise;
+    assert.equal(result, "");
+  });
+
+  test("resolves when process is externally killed after stdout ends", async () => {
+    const promise = invokeAgent(testConfig, tmpDir, tmpDir, testStep, "ctx");
+    await Promise.resolve();
+    const child = currentChild!;
+
+    // stdout ends — work is committed
+    child.stdout.emit("end");
+
+    // External kill (OOM, kill -9) causes close with null code
+    child.emit("close", null);
+
+    // Should resolve as success since stdout ended (work is committed)
     const result = await promise;
     assert.equal(result, "");
   });

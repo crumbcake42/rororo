@@ -449,7 +449,7 @@ export function invokeAgent(
 
       if (killed && !killedAfterOutput) {
         promiseReject(new Error(`Agent ${step.role} killed: ${killReason}`));
-      } else if (!killed && code !== 0) {
+      } else if (!killed && !stdoutEnded && code !== 0) {
         promiseReject(
           new Error(`Agent ${step.role} failed with exit code ${code}`),
         );

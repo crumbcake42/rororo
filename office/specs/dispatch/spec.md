@@ -54,7 +54,7 @@ The dispatch system reads ready tasks, assembles context, and invokes agents thr
 ### Scenario: Agent output completes but process lingers
 - GIVEN an agent is invoked with `--print`
 - WHEN stdout closes (output complete) but the process does not exit within 30 seconds
-- THEN the process is killed and the step is treated as a **successful** completion — the idle timer does not apply after output is complete
+- THEN the process is killed and the step is treated as a **successful** completion — both the idle timer and the max timer are cancelled after output is complete
 
 ### Scenario: Agent hangs mid-output
 - GIVEN an agent is invoked with `--print`

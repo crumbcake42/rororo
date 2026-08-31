@@ -46,15 +46,10 @@ The dispatch system reads ready tasks, assembles context, and invokes agents thr
 - WHEN a marker's role name does not match the current pipeline's role at that index
 - THEN the marker is not counted as completed and the pipeline re-runs from that step
 
-### Scenario: Agent output completes and process exits
+### Scenario: Agent output completes (exit or linger)
 - GIVEN an agent is invoked with `--print`
-- WHEN the agent finishes producing output and the process exits with code 0
-- THEN the step completes successfully and the pipeline proceeds normally
-
-### Scenario: Agent output completes but process lingers
-- GIVEN an agent is invoked with `--print`
-- WHEN stdout closes (output complete) but the process does not exit within 30 seconds
-- THEN the process is killed and the step is treated as a **successful** completion — both the idle timer and the max timer are cancelled after output is complete
+- WHEN stdout closes (output complete)
+- THEN both idle and max timers are cancelled. If the process exits within 30s, success. If it lingers past 30s, it's killed with success disposition — the work product is complete.
 
 ### Scenario: Agent hangs mid-output without producing work
 - GIVEN an agent is invoked with `--print`
@@ -85,20 +80,14 @@ The dispatch system reads ready tasks, assembles context, and invokes agents thr
 
 Signal files (`.office-signal-<issue>.json`) are checked between pipeline steps — after the current step's commit and before the next agent invocation.
 
-### Scenario: Cancel signal received
-- GIVEN a pipeline is executing and `office cancel <issue>` was invoked
+### Scenario: Cancel or pause signal received
+- GIVEN `office cancel <issue>` or `office pause <issue>` was invoked during pipeline execution
 - WHEN the dispatch loop checks for signals after a step completes
-- THEN it reads and deletes the signal file, pushes the branch to preserve completed work, labels the issue `status:blocked-unclassified`, adds a comment noting the cancellation and which step was last completed, notifies the user, and exits the pipeline
-
-### Scenario: Pause signal received
-- GIVEN a pipeline is executing and `office pause <issue>` was invoked
-- WHEN the dispatch loop checks for signals after a step completes
-- THEN it reads and deletes the signal file, pushes the branch, labels the issue `status:paused`, adds a comment noting the pause point (step N of M), notifies the user, and exits the pipeline
+- THEN it reads and deletes the signal file, pushes the branch, labels the issue (`status:blocked-unclassified` for cancel, `status:paused` for pause), adds a comment noting the stop point, notifies the user, and exits
 
 ### Scenario: Usage budget wind-down
-- GIVEN a pipeline is executing with a `UsageBudget` provided by the daemon
-- WHEN the budget's `shouldWindDown()` returns true after a step completes
-- THEN the pipeline treats it like a pause: pushes the branch, labels the issue `status:paused`, adds a comment noting the wind-down reason and pause point, notifies the user, and exits
+- GIVEN a `UsageBudget` is provided and `shouldWindDown()` returns true after a step
+- THEN the pipeline behaves like a pause: push, label `status:paused`, comment with wind-down reason, notify, exit
 
 ### Scenario: Signal arrives with no running pipeline
 - GIVEN `office cancel <issue>` or `office pause <issue>` is invoked
@@ -116,3 +105,60 @@ Signal files (`.office-signal-<issue>.json`) are checked between pipeline steps 
 - GIVEN `office dispatch <issue> --priority high` is invoked
 - WHEN the issue is labeled `status:ready`
 - THEN the system adds the `priority:high` label to the issue before dispatching it
+
+## Post-Review Revision
+
+### Scenario: Reviewer step captures output in pipeline
+- GIVEN a pipeline step has `role: "reviewer"`
+- WHEN the step is invoked during pipeline execution
+- THEN `invokeAgent` is called with `captureOutput: true`, the output is printed to terminal for visibility, and the raw output string is retained for findings parsing
+
+### Scenario: Revise findings trigger implementer re-invocation
+- GIVEN a reviewer pipeline step completes with structured findings
+- WHEN any finding has `disposition: "revise"` AND `dispatch.max_revision_rounds` is greater than 0
+- THEN the dispatch system re-invokes the implementer role with the revise findings as context, in the same worktree on the same branch
+
+### Scenario: Revision context assembly
+- GIVEN revise findings exist from a reviewer step
+- WHEN the implementer is re-invoked for revision
+- THEN the context includes: the original issue title and number, the specific revise findings (file, line, severity, description, recommendation), and a directive to address only these findings without introducing unrelated changes
+
+### Scenario: Revision changes committed
+- GIVEN the implementer completes a revision step
+- WHEN file changes exist in the worktree
+- THEN changes are committed with message `revision {round}: implementer` — this format is distinct from `step N/M:` so it does not interfere with the step-resume mechanism
+
+### Scenario: Confirmation review after revision
+- GIVEN a revision step produces committed changes
+- WHEN the revision commit is complete
+- THEN the reviewer is re-invoked with a scoped prompt to check only whether the specific revision findings were addressed, not a full re-review
+
+### Scenario: Confirmation review findings become follow-ups only
+- GIVEN a confirmation review completes
+- WHEN the reviewer outputs new findings
+- THEN all findings regardless of their `disposition` field are treated as follow-up — no further revision rounds occur after a confirmation review
+
+### Scenario: Max revision rounds reached
+- GIVEN `dispatch.max_revision_rounds` revision rounds have already executed
+- WHEN the reviewer produces additional `revise` findings
+- THEN all remaining revise findings are promoted to `follow-up` and create child issues
+
+### Scenario: Follow-up issue creation from findings
+- GIVEN a reviewer finding has `disposition: "follow-up"` (or is promoted from `revise` due to round cap or confirmation review)
+- WHEN the dispatch system processes it
+- THEN a GitHub issue is created with: title derived from the finding description, body referencing the parent issue number and including the reviewer's recommendation, and labels `status:backlog` and the parent issue's `pipeline:*` label
+
+### Scenario: Auto-revision disabled
+- GIVEN `dispatch.max_revision_rounds` is 0 in the config
+- WHEN a reviewer step produces structured findings with `revise` dispositions
+- THEN no revision is performed — findings are logged to terminal but not acted on, and the pipeline proceeds to the next step normally
+
+### Scenario: No structured findings in reviewer output
+- GIVEN a reviewer pipeline step completes
+- WHEN the output contains no `<!-- FINDINGS_START -->` / `<!-- FINDINGS_END -->` markers or the JSON is malformed
+- THEN the dispatch system logs a warning, treats it as zero findings, and proceeds to the next pipeline step without revision
+
+### Scenario: Signals and budget checked between revision sub-steps
+- GIVEN revision or confirmation review is in progress
+- WHEN a revision sub-step completes (implementer revision or confirmation review)
+- THEN the dispatch loop checks for pause/cancel signals and usage budget wind-down, applying the same handling as between regular pipeline steps

@@ -33,6 +33,32 @@ For each finding, provide:
 - **Description**: what the issue is and why it matters.
 - **Recommendation**: what to do about it (but do not make the change yourself).
 
+### Structured Findings Block
+After your prose review, output a machine-readable JSON findings block. This enables the dispatch system to automatically act on your suggestions.
+
+Format:
+```
+<!-- FINDINGS_START -->
+[
+  {
+    "file": "path/to/file.ts",
+    "line": 42,
+    "severity": "suggestion",
+    "description": "Missing test for edge case X",
+    "recommendation": "Add a test that verifies behavior when X is empty",
+    "disposition": "revise"
+  }
+]
+<!-- FINDINGS_END -->
+```
+
+**Disposition values:**
+- `revise` — Small, mechanically fixable on the current branch: add a test, rename a variable, fix a typo, add error handling for a specific case.
+- `follow-up` — Larger work requiring separate planning: architectural changes, new features, cross-cutting refactors.
+- `informational` — Observation only, no action needed.
+
+If there are no findings, output an empty array: `[]`.
+
 ## Constraints
 - You have read-only access. You cannot modify any files.
 - You do not fix issues. You identify them and recommend fixes.

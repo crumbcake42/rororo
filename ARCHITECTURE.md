@@ -21,7 +21,7 @@ OpenSpec for specification management.
 | `notify.ts` | Notification routing — terminal, Slack webhook, Twilio SMS |
 | `daemon.ts` | Autonomous dispatch loop with pause/resume, usage budget tracking, and lifecycle notifications |
 | `create.ts` | Interactive issue creation sessions |
-| `review.ts` | PR review — diff assembly, context building, reviewer agent invocation |
+| `review.ts` | PR review — diff assembly, context building, reviewer agent invocation, structured findings parsing |
 
 ### Script Layer (`office/src/scripts/` → `scripts/`)
 Thin TypeScript entry points compiled to `office/dist/scripts/`, invoked via bash wrappers in `scripts/`.
@@ -43,6 +43,7 @@ Model routing rationale: Opus for judgment-critical roles, Sonnet for throughput
 ## Data Flow
 Issue (GitHub) → dispatch → worktree + agent → PR → quality gates (CI) → merge
 PR (GitHub) → review → diff + context assembly → reviewer agent → findings (terminal / PR comment)
+Pipeline reviewer step → structured findings → revision (fixable items) → confirmation review → follow-up issues (larger items)
 
 ## Pipeline Resilience
 Each pipeline step's changes are committed to the worktree branch after the agent completes, using the message format `step N/M: role`. Steps that produce no file changes get no commit. On pipeline failure, the branch is pushed to the remote before worktree cleanup, preserving all completed work. On re-dispatch of a failed pipeline, the system detects completed steps from the commit history on the existing remote branch and resumes from the first incomplete step.
@@ -50,6 +51,18 @@ Each pipeline step's changes are committed to the worktree branch after the agen
 Adversarial pipelines are excluded from incremental commits — they produce debate transcripts posted to the issue, not code changes, so the resume mechanism doesn't apply.
 
 **Agent process lifecycle.** `invokeAgent` manages two timeout phases. While the agent is producing output (stdout open), the idle timer (default 300s) resets on each data event — a genuine hang fires the timer and kills the process as a failure. Once stdout closes (output complete), both the idle timer and the max timer are cancelled and replaced by a short exit grace period (30s). If the process doesn't exit within the grace period, it's killed with **success** disposition. Additionally, before any timeout kill (idle or max) is treated as a failure, the system checks whether the agent produced work: first by comparing `HEAD` before and after agent execution, then by checking `git status --porcelain` for uncommitted changes. If HEAD moved forward or the working tree is dirty, the kill resolves as success regardless of stdout state. This handles both the common case where `claude --print` stays alive with stdout open after finishing work and the case where an agent writes files without committing (the dispatch loop commits after the agent returns).
+
+## Post-Review Revision
+
+When a reviewer pipeline step produces structured findings, the dispatch system can automatically handle them before proceeding to the next step.
+
+**Structured findings.** The reviewer agent outputs a JSON findings block (delimited by `<!-- FINDINGS_START -->` / `<!-- FINDINGS_END -->` markers) alongside its prose review. Each finding has a `disposition` field: `revise` (fix on this branch), `follow-up` (create a new issue), or `informational` (no action needed).
+
+**Revision flow.** For `revise` findings: the dispatch system re-invokes the implementer with the findings as context on the same branch, commits the changes, then runs a scoped confirmation review. Confirmation review findings only produce follow-up issues, never another revision cycle. For `follow-up` findings: child issues are created labeled `status:backlog`.
+
+**Loop prevention.** Hard-capped at `dispatch.max_revision_rounds` (default: 1). Zero disables auto-revision entirely. The confirmation review is scoped to the revision diff only and cannot trigger further revisions.
+
+**Revision sub-steps.** Commit messages use format `revision {round}: {role}` (not `step N/M:`) so they don't interfere with the step-resume mechanism. On re-dispatch, the reviewer step re-runs from scratch.
 
 ## Pipeline Control
 Pipelines can be paused, cancelled, or prioritized at the step boundary (between agent invocations).

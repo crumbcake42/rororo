@@ -234,6 +234,37 @@ describe("invokeAgent() process lifecycle", () => {
     await promise; // resolves as success (killedAfterOutput=true)
   });
 
+  test("max timer is cancelled when stdout ends so it cannot misfire as failure", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+
+    const shortMaxConfig = {
+      dispatch: { agent_idle_timeout: 300, agent_max_timeout: 10 },
+    } as unknown as OfficeConfig;
+
+    const promise = invokeAgent(shortMaxConfig, tmpDir, tmpDir, testStep, "ctx");
+    await Promise.resolve();
+    const child = currentChild!;
+
+    // stdout ends at 5s — before the 10s max timeout
+    mock.timers.tick(5_000);
+    child.stdout.emit("end");
+
+    // Advance past the 10s max timeout boundary
+    mock.timers.tick(6_000);
+
+    // Max timer should NOT have fired — only grace timer is active
+    assert.equal(
+      child.kill.mock.callCount(),
+      0,
+      "max timer must not fire after stdout ends",
+    );
+
+    // Process exits cleanly within the 30s grace period
+    child.emit("close", 0);
+    const result = await promise;
+    assert.equal(result, "");
+  });
+
   test("resolves with captured stdout when captureOutput is true", async () => {
     const promise = invokeAgent(
       testConfig,

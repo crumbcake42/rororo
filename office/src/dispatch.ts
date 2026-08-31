@@ -422,6 +422,7 @@ export function invokeAgent(
     child.stdout.on("end", () => {
       stdoutEnded = true;
       clearTimeout(idleTimer);
+      clearTimeout(maxTimer);
       graceTimer = setTimeout(
         () =>
           killChild(

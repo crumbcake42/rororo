@@ -240,20 +240,38 @@ describe("dispatchIssue() signal handling", () => {
     );
   });
 
-  test("signal file is consumed after pipeline completes normally", async () => {
+  test("stale signal file is drained after pipeline completes normally", async () => {
     const issue = makeIssue(44);
-    // Write signal AFTER dispatch starts — simulates signal arriving during last step.
-    // Since our mock spawn resolves instantly, write it before calling.
-    // The drain call at the end of the pipeline should consume it.
-    await dispatchIssue(testConfig, tmpDir, issue, "feature");
+    // Write signal before dispatch. The 2-step pipeline checks signals only
+    // between steps (after step 1), so this signal fires mid-pipeline and
+    // pauses. To test the drain path, we need a pipeline where the signal
+    // arrives during the LAST step — but our mocks resolve instantly so we
+    // can't time that. Instead, test directly: write signal, run a 1-step
+    // pipeline, and verify the drain call at the end consumes it.
 
-    // Now write a signal and verify readAndConsumeSignal would find it
-    // if it hadn't been drained. Actually, let's verify no stale signal remains
-    // by writing one before dispatch and checking it's gone.
-    writeSignal(tmpDir, 45, "pause");
+    // Create a 1-step pipeline so no mid-pipeline check fires.
+    writeFileSync(
+      join(tmpDir, "pipelines", "single.yml"),
+      [
+        "name: single",
+        "description: one step",
+        "steps:",
+        "  - role: architect",
+        '    description: "only step"',
+      ].join("\n"),
+    );
+
+    writeSignal(tmpDir, 44, "cancel");
     assert.ok(
-      existsSync(join(tmpDir, ".office-signal-45.json")),
-      "signal file should exist before drain",
+      existsSync(join(tmpDir, ".office-signal-44.json")),
+      "signal file should exist before dispatch",
+    );
+
+    await dispatchIssue(testConfig, tmpDir, issue, "single");
+
+    assert.ok(
+      !existsSync(join(tmpDir, ".office-signal-44.json")),
+      "signal file should be consumed (drained) after pipeline completes",
     );
   });
 

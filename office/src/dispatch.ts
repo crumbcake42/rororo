@@ -747,7 +747,7 @@ export async function dispatchIssue(
         const windDown = budget?.shouldWindDown() ?? false;
 
         if (signal === "cancel" || signal === "pause" || windDown) {
-          const isPause = signal === "pause" || windDown;
+          const isPause = signal !== "cancel" && (signal === "pause" || windDown);
           const pausePoint = `step ${i + 1} of ${pipeline.steps.length} (${step.role})`;
           const commentReason = windDown
             ? `Usage budget wind-down triggered: ${budget!.reason()}. Paused after ${pausePoint}.`

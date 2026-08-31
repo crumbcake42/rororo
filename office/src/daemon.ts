@@ -135,7 +135,7 @@ export function resumeDaemon(projectRoot: string): void {
 }
 
 export async function resumePipeline(
-  projectRoot: string,
+  _projectRoot: string,
   issueNumber: number,
 ): Promise<void> {
   const issue = await getIssue(issueNumber);

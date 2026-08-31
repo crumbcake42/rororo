@@ -5,4 +5,5 @@ office/node_modules/
 .env
 .worktrees/
 .office-daemon-state.json
+.office-signal-*.json
 *.tsbuildinfo

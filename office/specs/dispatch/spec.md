@@ -50,3 +50,39 @@ The dispatch system reads ready tasks, assembles context, and invokes agents thr
 - GIVEN an agent is executing a pipeline step
 - WHEN it encounters a question it cannot answer
 - THEN the pipeline pauses, the issue is labeled `status:blocked-human`, and the user is notified per the configured notification mode
+
+## Pipeline Signals
+
+Signal files (`.office-signal-<issue>.json`) are checked between pipeline steps — after the current step's commit and before the next agent invocation.
+
+### Scenario: Cancel signal received
+- GIVEN a pipeline is executing and `office cancel <issue>` was invoked
+- WHEN the dispatch loop checks for signals after a step completes
+- THEN it reads and deletes the signal file, pushes the branch to preserve completed work, labels the issue `status:blocked-unclassified`, adds a comment noting the cancellation and which step was last completed, notifies the user, and exits the pipeline
+
+### Scenario: Pause signal received
+- GIVEN a pipeline is executing and `office pause <issue>` was invoked
+- WHEN the dispatch loop checks for signals after a step completes
+- THEN it reads and deletes the signal file, pushes the branch, labels the issue `status:paused`, adds a comment noting the pause point (step N of M), notifies the user, and exits the pipeline
+
+### Scenario: Usage budget wind-down
+- GIVEN a pipeline is executing with a `UsageBudget` provided by the daemon
+- WHEN the budget's `shouldWindDown()` returns true after a step completes
+- THEN the pipeline treats it like a pause: pushes the branch, labels the issue `status:paused`, adds a comment noting the wind-down reason and pause point, notifies the user, and exits
+
+### Scenario: Signal arrives with no running pipeline
+- GIVEN `office cancel <issue>` or `office pause <issue>` is invoked
+- WHEN the issue is not labeled `status:in-progress`
+- THEN the CLI prints a warning and exits without writing a signal file
+
+## Priority Dispatch
+
+### Scenario: Dispatch next with priority sorting
+- GIVEN the daemon or manual dispatch calls `dispatchNext` without specifying an issue
+- WHEN multiple `status:ready` issues exist
+- THEN issues are sorted by priority label (`priority:high` first, no priority label second, `priority:low` last), then by issue number ascending within each tier, and the first issue is dispatched
+
+### Scenario: Dispatch with priority flag
+- GIVEN `office dispatch <issue> --priority high` is invoked
+- WHEN the issue is labeled `status:ready`
+- THEN the system adds the `priority:high` label to the issue before dispatching it

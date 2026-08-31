@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { loadConfig } from "../src/config.js";
+import { loadConfig, checkDispatchModeAdvisory } from "../src/config.js";
 
 function writeConfig(dir: string, overrides: Record<string, unknown>): void {
   const base = {
@@ -67,44 +67,40 @@ describe("dispatch_mode advisory warnings", () => {
   test("dispatch command warns when dispatch_mode is daemon", () => {
     writeConfig(tmpDir, { dispatch_mode: "daemon" });
     const config = loadConfig(tmpDir);
-    if (config.dispatch_mode === "daemon") {
-      console.warn(
-        "Advisory: dispatch_mode is set to 'daemon' — the daemon should be managing dispatch.",
-      );
-    }
+    checkDispatchModeAdvisory(config, "dispatch");
     assert.equal(warnMock.mock.callCount(), 1);
     const msg = String(warnMock.mock.calls[0].arguments[0]);
     assert.ok(msg.includes("daemon"), `Expected 'daemon' in: ${msg}`);
+    assert.ok(
+      msg.includes("Run `office start` instead"),
+      `Expected actionable guidance in: ${msg}`,
+    );
   });
 
   test("dispatch command does not warn when dispatch_mode is manual", () => {
     writeConfig(tmpDir, { dispatch_mode: "manual" });
     const config = loadConfig(tmpDir);
-    if (config.dispatch_mode === "daemon") {
-      console.warn("Advisory: should not fire");
-    }
+    checkDispatchModeAdvisory(config, "dispatch");
     assert.equal(warnMock.mock.callCount(), 0);
   });
 
   test("start command warns when dispatch_mode is manual", () => {
     writeConfig(tmpDir, { dispatch_mode: "manual" });
     const config = loadConfig(tmpDir);
-    if (config.dispatch_mode === "manual") {
-      console.warn(
-        "Advisory: dispatch_mode is set to 'manual' — the daemon is starting anyway.",
-      );
-    }
+    checkDispatchModeAdvisory(config, "start");
     assert.equal(warnMock.mock.callCount(), 1);
     const msg = String(warnMock.mock.calls[0].arguments[0]);
     assert.ok(msg.includes("manual"), `Expected 'manual' in: ${msg}`);
+    assert.ok(
+      msg.includes("Change dispatch_mode to 'daemon'"),
+      `Expected actionable guidance in: ${msg}`,
+    );
   });
 
   test("start command does not warn when dispatch_mode is daemon", () => {
     writeConfig(tmpDir, { dispatch_mode: "daemon" });
     const config = loadConfig(tmpDir);
-    if (config.dispatch_mode === "manual") {
-      console.warn("Advisory: should not fire");
-    }
+    checkDispatchModeAdvisory(config, "start");
     assert.equal(warnMock.mock.callCount(), 0);
   });
 });

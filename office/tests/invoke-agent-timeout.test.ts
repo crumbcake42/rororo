@@ -19,6 +19,8 @@ type MockChild = EventEmitter & {
 };
 
 let currentChild: MockChild | null = null;
+let mockHead = "";
+let mockGitStatus = "";
 
 function makeMockChild(): MockChild {
   const child = new EventEmitter() as MockChild;
@@ -31,7 +33,15 @@ function makeMockChild(): MockChild {
 
 mock.module("node:child_process", {
   namedExports: {
-    execSync: () => "",
+    execSync: (cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("git rev-parse HEAD")) {
+        return mockHead + "\n";
+      }
+      if (typeof cmd === "string" && cmd.includes("git status --porcelain")) {
+        return mockGitStatus;
+      }
+      return "";
+    },
     spawn: () => {
       currentChild = makeMockChild();
       return currentChild;
@@ -78,6 +88,8 @@ describe("invokeAgent() process lifecycle", () => {
   beforeEach(() => {
     tmpDir = makeTmpProject();
     currentChild = null;
+    mockHead = "";
+    mockGitStatus = "";
     logMock = mock.method(console, "log", () => {});
   });
 
@@ -332,6 +344,96 @@ describe("invokeAgent() process lifecycle", () => {
     // Should resolve as success since stdout ended (work is committed)
     const result = await promise;
     assert.equal(result, "");
+  });
+
+  test("idle kill resolves as success when agent committed work to worktree", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+
+    mockHead = "aaa111";
+    const promise = invokeAgent(testConfig, tmpDir, tmpDir, testStep, "ctx");
+    await Promise.resolve();
+    const child = currentChild!;
+
+    // Agent produces output then goes idle
+    child.stdout.emit("data", Buffer.from("working..."));
+
+    // Simulate agent committing (HEAD moves forward)
+    mockHead = "bbb222";
+
+    // Idle timer fires — agent is silent but committed work
+    mock.timers.tick(300_001);
+    assert.equal(child.kill.mock.callCount(), 1);
+    child.emit("close", null);
+
+    // Should resolve as success because HEAD moved
+    const result = await promise;
+    assert.equal(result, "");
+  });
+
+  test("max timeout kill resolves as success when agent committed work", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+
+    const shortMaxConfig = {
+      dispatch: { agent_idle_timeout: 300, agent_max_timeout: 60 },
+    } as unknown as OfficeConfig;
+
+    mockHead = "aaa111";
+    const promise = invokeAgent(shortMaxConfig, tmpDir, tmpDir, testStep, "ctx");
+    await Promise.resolve();
+    const child = currentChild!;
+
+    // Keep resetting idle timer so only max timer fires
+    mock.timers.tick(30_000);
+    child.stdout.emit("data", Buffer.from("output"));
+
+    // Simulate agent committing
+    mockHead = "bbb222";
+
+    mock.timers.tick(30_001); // past 60s max timeout
+    assert.equal(child.kill.mock.callCount(), 1);
+    child.emit("close", null);
+
+    // Should resolve as success because HEAD moved
+    const result = await promise;
+    assert.equal(result, "");
+  });
+
+  test("idle kill resolves as success when agent left uncommitted changes", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+
+    mockHead = "aaa111";
+    const promise = invokeAgent(testConfig, tmpDir, tmpDir, testStep, "ctx");
+    await Promise.resolve();
+    const child = currentChild!;
+
+    child.stdout.emit("data", Buffer.from("working..."));
+
+    // HEAD stays the same, but agent wrote files (dirty working tree)
+    mockGitStatus = "M  ARCHITECTURE.md\nA  office/specs/review-action/spec.md";
+
+    mock.timers.tick(300_001);
+    assert.equal(child.kill.mock.callCount(), 1);
+    child.emit("close", null);
+
+    // Should resolve as success because working tree has changes
+    const result = await promise;
+    assert.equal(result, "");
+  });
+
+  test("idle kill rejects as failure when agent did not commit", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+
+    mockHead = "aaa111";
+    const promise = invokeAgent(testConfig, tmpDir, tmpDir, testStep, "ctx");
+    await Promise.resolve();
+    const child = currentChild!;
+
+    // HEAD stays the same — agent did not commit
+    mock.timers.tick(300_001);
+    assert.equal(child.kill.mock.callCount(), 1);
+    child.emit("close", null);
+
+    await assert.rejects(promise, /idle for 300s with no output/);
   });
 
   test("resolves with captured stdout when captureOutput is true", async () => {

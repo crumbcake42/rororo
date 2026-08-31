@@ -363,6 +363,16 @@ export function invokeAgent(
 
   console.log(`Invoking ${step.role} agent (${model}) in ${worktreePath}...`);
 
+  let headBefore: string | null = null;
+  try {
+    headBefore = execSync("git rev-parse HEAD", {
+      cwd: worktreePath,
+      encoding: "utf-8",
+    }).trim();
+  } catch {
+    // Not a git repo or no commits — commit check unavailable
+  }
+
   return new Promise<string>((promiseResolve, promiseReject) => {
     const child = spawn("claude", args, {
       cwd: worktreePath,
@@ -448,7 +458,30 @@ export function invokeAgent(
       if (graceTimer !== null) clearTimeout(graceTimer);
 
       if (killed && !killedAfterOutput) {
-        promiseReject(new Error(`Agent ${step.role} killed: ${killReason}`));
+        let agentProducedWork = false;
+        try {
+          const headAfter = execSync("git rev-parse HEAD", {
+            cwd: worktreePath,
+            encoding: "utf-8",
+          }).trim();
+          if (headBefore !== null && headBefore !== headAfter) {
+            agentProducedWork = true;
+          }
+          if (!agentProducedWork) {
+            const status = execSync("git status --porcelain", {
+              cwd: worktreePath,
+              encoding: "utf-8",
+            }).trim();
+            agentProducedWork = status.length > 0;
+          }
+        } catch {
+          // git error during work check
+        }
+        if (agentProducedWork) {
+          promiseResolve(captureOutput ? stdout : "");
+        } else {
+          promiseReject(new Error(`Agent ${step.role} killed: ${killReason}`));
+        }
       } else if (!killed && !stdoutEnded && code !== 0) {
         promiseReject(
           new Error(`Agent ${step.role} failed with exit code ${code}`),

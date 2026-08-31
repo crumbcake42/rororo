@@ -16,6 +16,7 @@ export interface AdversarialConfig {
 export interface DispatchConfig {
   agent_idle_timeout: number;
   agent_max_timeout: number;
+  max_revision_rounds: number;
 }
 
 export interface DaemonConfig {
@@ -103,6 +104,9 @@ export function loadConfig(projectRoot?: string): OfficeConfig {
       agent_max_timeout:
         ((raw.dispatch as Record<string, unknown>)
           ?.agent_max_timeout as number) ?? 3600,
+      max_revision_rounds:
+        ((raw.dispatch as Record<string, unknown>)
+          ?.max_revision_rounds as number) ?? 1,
     },
     daemon: {
       hibernation_interval:

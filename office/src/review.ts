@@ -3,8 +3,11 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { OfficeConfig } from "./config.js";
 import { getPR, addComment } from "./github.js";
-import { invokeAgent } from "./dispatch.js";
-import type { PipelineStep } from "./dispatch.js";
+import { invokeAgent, parseReviewFindings } from "./dispatch.js";
+import type { PipelineStep, ReviewFinding } from "./dispatch.js";
+
+export { parseReviewFindings };
+export type { ReviewFinding };
 
 const MAX_CONTEXT_BYTES = 100_000;
 

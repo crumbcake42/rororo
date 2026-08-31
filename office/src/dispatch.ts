@@ -358,6 +358,7 @@ export function invokeAgent(
   const maxTimeoutSecs = config.dispatch.agent_max_timeout;
   const idleMs = idleTimeoutSecs * 1000;
   const maxMs = maxTimeoutSecs * 1000;
+  // Intentionally not config-driven: exit grace is a fixed safety net, not a tuning knob.
   const exitGraceMs = 30_000;
 
   console.log(`Invoking ${step.role} agent (${model}) in ${worktreePath}...`);

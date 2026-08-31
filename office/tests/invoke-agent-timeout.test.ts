@@ -200,6 +200,50 @@ describe("invokeAgent() process lifecycle", () => {
     await assert.rejects(promise, /idle for 300s with no output/);
   });
 
+  test("idle timer is reset by stderr data before stdout ends", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+
+    const promise = invokeAgent(testConfig, tmpDir, tmpDir, testStep, "ctx");
+    await Promise.resolve();
+    const child = currentChild!;
+
+    // stderr arrives at 200s — resets the 300s idle timer
+    mock.timers.tick(200_000);
+    child.stderr.emit("data", Buffer.from("some stderr"));
+
+    // Original 300s deadline (from spawn) has passed, but timer was reset
+    mock.timers.tick(100_000); // now at 300s total
+    assert.equal(child.kill.mock.callCount(), 0, "idle timer should have been reset by stderr");
+
+    // Advance past the reset deadline (200s + 300s = 500s total)
+    mock.timers.tick(200_001);
+    assert.equal(child.kill.mock.callCount(), 1, "idle timer should fire 300s after stderr data");
+
+    child.emit("close", null);
+    await assert.rejects(promise, /idle for 300s with no output/);
+  });
+
+  test("max timer fires and rejects when agent exceeds max timeout before stdout ends", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+
+    const shortMaxConfig = {
+      dispatch: { agent_idle_timeout: 300, agent_max_timeout: 60 },
+    } as unknown as OfficeConfig;
+
+    const promise = invokeAgent(shortMaxConfig, tmpDir, tmpDir, testStep, "ctx");
+    await Promise.resolve();
+    const child = currentChild!;
+
+    // Keep resetting idle timer with data so only max timer fires
+    mock.timers.tick(30_000);
+    child.stdout.emit("data", Buffer.from("output"));
+    mock.timers.tick(30_001); // past 60s max timeout
+
+    assert.equal(child.kill.mock.callCount(), 1, "max timer should fire");
+    child.emit("close", null);
+    await assert.rejects(promise, /exceeded max timeout of 60s/);
+  });
+
   test("idle timer does not reset after stdout ends", async () => {
     mock.timers.enable({ apis: ["setTimeout"] });
 

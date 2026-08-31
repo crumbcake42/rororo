@@ -95,6 +95,11 @@ mock.module(new URL("../src/config.js", import.meta.url).href, {
   },
 });
 
+// Callback invoked each time mock spawn fires — tests can set this to
+// inject a signal file mid-step (simulating a signal arriving during
+// agent execution, after the initial drain at dispatch start).
+let onSpawnClose: (() => void) | null = null;
+
 // Mock child_process: execSync is a no-op, spawn returns a mock that
 // emits close(0) on the next tick so invokeAgent resolves immediately.
 mock.module("node:child_process", {
@@ -111,7 +116,10 @@ mock.module("node:child_process", {
       child.stdout = new EventEmitter();
       child.stderr = new EventEmitter();
       child.kill = () => {};
-      process.nextTick(() => child.emit("close", 0));
+      process.nextTick(() => {
+        onSpawnClose?.();
+        child.emit("close", 0);
+      });
       return child;
     },
   },
@@ -181,11 +189,13 @@ describe("dispatchIssue() signal handling", () => {
     setLabelsCalls.length = 0;
     addCommentCalls.length = 0;
     notifyCalls.length = 0;
+    onSpawnClose = null;
     logMock = mock.method(console, "log", () => {});
     errorMock = mock.method(console, "error", () => {});
   });
 
   afterEach(() => {
+    onSpawnClose = null;
     logMock.mock.restore();
     errorMock.mock.restore();
     rmSync(tmpDir, { recursive: true, force: true });
@@ -193,7 +203,13 @@ describe("dispatchIssue() signal handling", () => {
 
   test("pause signal between steps sets status:paused and adds comment", async () => {
     const issue = makeIssue(42);
-    writeSignal(tmpDir, 42, "pause");
+    let written = false;
+    onSpawnClose = () => {
+      if (!written) {
+        written = true;
+        writeSignal(tmpDir, 42, "pause");
+      }
+    };
 
     const result: DispatchResult = await dispatchIssue(
       testConfig,
@@ -218,7 +234,13 @@ describe("dispatchIssue() signal handling", () => {
 
   test("cancel signal between steps sets status:blocked-unclassified and adds comment", async () => {
     const issue = makeIssue(43);
-    writeSignal(tmpDir, 43, "cancel");
+    let written = false;
+    onSpawnClose = () => {
+      if (!written) {
+        written = true;
+        writeSignal(tmpDir, 43, "cancel");
+      }
+    };
 
     const result: DispatchResult = await dispatchIssue(
       testConfig,

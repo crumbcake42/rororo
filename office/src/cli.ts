@@ -54,7 +54,7 @@ program
       config,
       projectRoot,
       issueNumber,
-      priority,
+      issueNumber ? priority : undefined,
     );
     if (!result) {
       console.log(

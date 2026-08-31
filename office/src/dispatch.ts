@@ -62,7 +62,7 @@ export type DispatchResult =
   | "paused"
   | "cancelled"
   | "blocked"
-  | "skipped";
+  | "failed";
 
 interface SignalFile {
   action: PipelineSignal;
@@ -650,6 +650,8 @@ export async function dispatchIssue(
   const baseBranch = getBaseBranch(config);
   const branch = branchName(issue.number, issue.title, pipelineName);
 
+  readAndConsumeSignal(projectRoot, issue.number);
+
   console.log(`\nDispatching #${issue.number}: ${issue.title}`);
   console.log(`Pipeline: ${pipelineName} (${pipeline.steps.length} steps)`);
   console.log(`Branch: ${branch}\n`);
@@ -777,7 +779,12 @@ export async function dispatchIssue(
       }
     }
 
-    readAndConsumeSignal(projectRoot, issue.number);
+    const lateSignal = readAndConsumeSignal(projectRoot, issue.number);
+    if (lateSignal) {
+      console.warn(
+        `${lateSignal === "cancel" ? "Cancel" : "Pause"} signal arrived too late — pipeline already completed normally.`,
+      );
+    }
 
     console.log(`\nPushing branch ${branch} to origin...`);
     execSync(`git push -u origin "${branch}"`, {
@@ -828,7 +835,7 @@ export async function dispatchIssue(
     });
 
     console.error(`\nPipeline failed for #${issue.number}: ${message}`);
-    return "skipped";
+    return "failed";
   } finally {
     try {
       cleanupWorktree(projectRoot, worktree.path, branch);

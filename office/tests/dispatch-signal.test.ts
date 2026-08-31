@@ -105,6 +105,7 @@ let onSpawnClose: (() => void) | null = null;
 mock.module("node:child_process", {
   namedExports: {
     execSync: () => "",
+    execFileSync: () => "",
     spawn: () => {
       const child = new EventEmitter() as EventEmitter & {
         stdin: { write: () => void; end: () => void };

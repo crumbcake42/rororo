@@ -6,7 +6,7 @@ import {
   writeFileSync,
   unlinkSync,
 } from "node:fs";
-import { execSync, spawn } from "node:child_process";
+import { execSync, execFileSync, spawn } from "node:child_process";
 import { resolve } from "node:path";
 import yaml from "js-yaml";
 import type { OfficeConfig } from "./config.js";
@@ -257,7 +257,7 @@ function commitStep(
     return;
   }
   execSync("git add -A", { cwd: worktreePath, stdio: "pipe" });
-  execSync(`git commit -m "step ${stepNumber}/${totalSteps}: ${role}"`, {
+  execFileSync("git", ["commit", "-m", `step ${stepNumber}/${totalSteps}: ${role}`], {
     cwd: worktreePath,
     stdio: "pipe",
   });
@@ -430,7 +430,6 @@ export function invokeAgent(
     const child = spawn("claude", args, {
       cwd: worktreePath,
       stdio: ["pipe", "pipe", "pipe"],
-      shell: true,
     });
 
     let stdout = "";
@@ -848,10 +847,11 @@ async function runPostReviewRevisions(
   }
 
   console.log(
-    `\n  Reviewer found ${reviseFindings.length} revise finding(s). Running up to ${maxRounds} revision round(s).`,
+    `\n  Reviewer found ${reviseFindings.length} revise finding(s). Running revision round.`,
   );
 
-  for (let round = 1; round <= maxRounds; round++) {
+  {
+    const round = 1;
     // Signal/budget check before implementer
     const sig1 = readAndConsumeSignal(projectRoot, issue.number);
     const wd1 = budget?.shouldWindDown() ?? false;
@@ -894,7 +894,7 @@ async function runPostReviewRevisions(
     });
     if (revStatus.trim().length > 0) {
       execSync("git add -A", { cwd: worktreePath, stdio: "pipe" });
-      execSync(`git commit -m "revision ${round}: implementer"`, {
+      execFileSync("git", ["commit", "-m", `revision ${round}: implementer`], {
         cwd: worktreePath,
         stdio: "pipe",
       });
@@ -959,8 +959,6 @@ async function runPostReviewRevisions(
       console.log("  Confirmation review: all findings addressed.");
     }
 
-    // No further revision rounds after a confirmation review
-    break;
   }
 
   await createFollowUpIssues(issue, followUps, pipeline);

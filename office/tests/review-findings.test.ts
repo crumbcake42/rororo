@@ -9,6 +9,7 @@ import type { ReviewFinding } from "../src/dispatch.js";
 mock.module("node:child_process", {
   namedExports: {
     execSync: () => "",
+    execFileSync: () => "",
     spawn: () => {
       throw new Error("spawn should not be called in these tests");
     },

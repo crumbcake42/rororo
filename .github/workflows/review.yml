@@ -33,7 +33,8 @@ jobs:
         working-directory: office
 
       - name: Review PR
-        run: node office/dist/cli.js review ${{ inputs.pr_number }} --comment
+        run: node office/dist/cli.js review "$PR_NUMBER" --comment
         env:
+          PR_NUMBER: ${{ inputs.pr_number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

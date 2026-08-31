@@ -60,7 +60,7 @@ When a reviewer pipeline step produces structured findings, the dispatch system 
 
 **Revision flow.** For `revise` findings: the dispatch system re-invokes the implementer with the findings as context on the same branch, commits the changes, then runs a scoped confirmation review. Confirmation review findings only produce follow-up issues, never another revision cycle. For `follow-up` findings: child issues are created labeled `status:backlog`.
 
-**Loop prevention.** Hard-capped at `dispatch.max_revision_rounds` (default: 1). Zero disables auto-revision entirely. The confirmation review is scoped to the revision diff only and cannot trigger further revisions.
+**Loop prevention.** Controlled by `dispatch.max_revision_rounds` (default: 1, 0 disables). When enabled, exactly one revision round runs: implementer fix → confirmation review. Any confirmation findings become follow-up issues, never another revision. The confirmation review is scoped to the revision diff only.
 
 **Revision sub-steps.** Commit messages use format `revision {round}: {role}` (not `step N/M:`) so they don't interfere with the step-resume mechanism. On re-dispatch, the reviewer step re-runs from scratch.
 

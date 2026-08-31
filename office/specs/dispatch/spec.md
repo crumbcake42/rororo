@@ -138,10 +138,10 @@ Signal files (`.office-signal-<issue>.json`) are checked between pipeline steps 
 - WHEN the reviewer outputs new findings
 - THEN all findings regardless of their `disposition` field are treated as follow-up — no further revision rounds occur after a confirmation review
 
-### Scenario: Max revision rounds reached
-- GIVEN `dispatch.max_revision_rounds` revision rounds have already executed
-- WHEN the reviewer produces additional `revise` findings
-- THEN all remaining revise findings are promoted to `follow-up` and create child issues
+### Scenario: Confirmation review findings promoted to follow-up
+- GIVEN a single revision round has completed (implementer re-invoked + confirmation review)
+- WHEN the confirmation reviewer produces findings with any disposition
+- THEN all non-informational findings are promoted to `follow-up` and create child issues — no further revision rounds occur
 
 ### Scenario: Follow-up issue creation from findings
 - GIVEN a reviewer finding has `disposition: "follow-up"` (or is promoted from `revise` due to round cap or confirmation review)

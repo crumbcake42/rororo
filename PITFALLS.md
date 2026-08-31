@@ -17,3 +17,10 @@ Within weeks, files reach thousands of lines of supersession chains that agents 
 Stale/contradictory information in agent context is actively counterproductive (ETH Zurich research).
 → Use living documents edited in place. Decision history lives in git, not in the document.
 Discovered: 2026-08-29
+
+## Idle timeout treats completed agents as failures
+The `claude --print` process may linger after finishing output (holding connections, internal cleanup).
+The idle timer fires on no-output and kills the process as a failure — even when the agent's work is fully committed.
+Pipelines with 3+ steps rarely complete because later steps never get reached.
+→ Detect stdout close as the completion signal. After stdout ends, replace the idle timer with a short grace period and treat kills as success.
+Discovered: 2026-08-30

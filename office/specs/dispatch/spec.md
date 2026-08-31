@@ -46,6 +46,21 @@ The dispatch system reads ready tasks, assembles context, and invokes agents thr
 - WHEN a marker's role name does not match the current pipeline's role at that index
 - THEN the marker is not counted as completed and the pipeline re-runs from that step
 
+### Scenario: Agent output completes and process exits
+- GIVEN an agent is invoked with `--print`
+- WHEN the agent finishes producing output and the process exits with code 0
+- THEN the step completes successfully and the pipeline proceeds normally
+
+### Scenario: Agent output completes but process lingers
+- GIVEN an agent is invoked with `--print`
+- WHEN stdout closes (output complete) but the process does not exit within 30 seconds
+- THEN the process is killed and the step is treated as a **successful** completion — the idle timer does not apply after output is complete
+
+### Scenario: Agent hangs mid-output
+- GIVEN an agent is invoked with `--print`
+- WHEN the agent produces no stdout or stderr data for `agent_idle_timeout` seconds while stdout is still open
+- THEN the process is killed and the step fails with an idle timeout error
+
 ### Scenario: Agent blocks during pipeline
 - GIVEN an agent is executing a pipeline step
 - WHEN it encounters a question it cannot answer

@@ -22,5 +22,5 @@ Discovered: 2026-08-29
 The `claude --print` process stays alive with stdout open after finishing work — it does not close stdout.
 The idle timer fires on no-output silence and kills the process as a failure, even when the agent has committed its work.
 Pipelines with 3+ steps rarely complete because later steps never get reached.
-→ Two defenses: (1) if stdout closes, cancel timers and use a 30s grace period (treats kills as success). (2) If stdout stays open but the agent committed work (HEAD moved forward), treat the idle kill as success. Check HEAD before spawn and after kill.
+→ Three defenses: (1) if stdout closes, cancel timers and use a 30s grace period (treats kills as success). (2) If stdout stays open but the agent committed work (HEAD moved forward), treat the idle kill as success. (3) If HEAD hasn't moved but the working tree is dirty (`git status --porcelain`), treat as success — covers agents that write files without committing (the dispatch loop commits after the agent returns).
 Discovered: 2026-08-30, updated: 2026-08-31

@@ -56,15 +56,20 @@ The dispatch system reads ready tasks, assembles context, and invokes agents thr
 - WHEN stdout closes (output complete) but the process does not exit within 30 seconds
 - THEN the process is killed and the step is treated as a **successful** completion — both the idle timer and the max timer are cancelled after output is complete
 
-### Scenario: Agent hangs mid-output without committing
+### Scenario: Agent hangs mid-output without producing work
 - GIVEN an agent is invoked with `--print`
-- WHEN the agent produces no stdout or stderr data for `agent_idle_timeout` seconds while stdout is still open AND HEAD has not moved forward since the agent was spawned
+- WHEN the agent produces no stdout or stderr data for `agent_idle_timeout` seconds while stdout is still open AND HEAD has not moved forward AND the working tree is clean
 - THEN the process is killed and the step fails with an idle timeout error
 
 ### Scenario: Agent completes work but process lingers with stdout open (idle)
 - GIVEN an agent is invoked with `--print`
 - WHEN the agent produces no stdout or stderr data for `agent_idle_timeout` seconds while stdout is still open BUT HEAD has moved forward (agent committed work)
 - THEN the process is killed and the step is treated as a **successful** completion — the committed work is preserved
+
+### Scenario: Agent writes files without committing and process lingers (idle)
+- GIVEN an agent is invoked with `--print`
+- WHEN the agent produces no stdout or stderr data for `agent_idle_timeout` seconds while stdout is still open AND HEAD has not moved BUT `git status --porcelain` shows uncommitted changes
+- THEN the process is killed and the step is treated as a **successful** completion — the dispatch loop will commit the changes
 
 ### Scenario: Agent exceeds max timeout after committing work
 - GIVEN an agent is invoked with `--print`

@@ -458,19 +458,26 @@ export function invokeAgent(
       if (graceTimer !== null) clearTimeout(graceTimer);
 
       if (killed && !killedAfterOutput) {
-        let agentCommitted = false;
-        if (headBefore !== null) {
-          try {
-            const headAfter = execSync("git rev-parse HEAD", {
+        let agentProducedWork = false;
+        try {
+          const headAfter = execSync("git rev-parse HEAD", {
+            cwd: worktreePath,
+            encoding: "utf-8",
+          }).trim();
+          if (headBefore !== null && headBefore !== headAfter) {
+            agentProducedWork = true;
+          }
+          if (!agentProducedWork) {
+            const status = execSync("git status --porcelain", {
               cwd: worktreePath,
               encoding: "utf-8",
             }).trim();
-            agentCommitted = headBefore !== headAfter;
-          } catch {
-            // git error during commit check
+            agentProducedWork = status.length > 0;
           }
+        } catch {
+          // git error during work check
         }
-        if (agentCommitted) {
+        if (agentProducedWork) {
           promiseResolve(captureOutput ? stdout : "");
         } else {
           promiseReject(new Error(`Agent ${step.role} killed: ${killReason}`));

@@ -20,6 +20,7 @@ type MockChild = EventEmitter & {
 
 let currentChild: MockChild | null = null;
 let mockHead = "";
+let mockGitStatus = "";
 
 function makeMockChild(): MockChild {
   const child = new EventEmitter() as MockChild;
@@ -35,6 +36,9 @@ mock.module("node:child_process", {
     execSync: (cmd: string) => {
       if (typeof cmd === "string" && cmd.includes("git rev-parse HEAD")) {
         return mockHead + "\n";
+      }
+      if (typeof cmd === "string" && cmd.includes("git status --porcelain")) {
+        return mockGitStatus;
       }
       return "";
     },
@@ -85,6 +89,7 @@ describe("invokeAgent() process lifecycle", () => {
     tmpDir = makeTmpProject();
     currentChild = null;
     mockHead = "";
+    mockGitStatus = "";
     logMock = mock.method(console, "log", () => {});
   });
 
@@ -389,6 +394,28 @@ describe("invokeAgent() process lifecycle", () => {
     child.emit("close", null);
 
     // Should resolve as success because HEAD moved
+    const result = await promise;
+    assert.equal(result, "");
+  });
+
+  test("idle kill resolves as success when agent left uncommitted changes", async () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+
+    mockHead = "aaa111";
+    const promise = invokeAgent(testConfig, tmpDir, tmpDir, testStep, "ctx");
+    await Promise.resolve();
+    const child = currentChild!;
+
+    child.stdout.emit("data", Buffer.from("working..."));
+
+    // HEAD stays the same, but agent wrote files (dirty working tree)
+    mockGitStatus = "M  ARCHITECTURE.md\nA  office/specs/review-action/spec.md";
+
+    mock.timers.tick(300_001);
+    assert.equal(child.kill.mock.callCount(), 1);
+    child.emit("close", null);
+
+    // Should resolve as success because working tree has changes
     const result = await promise;
     assert.equal(result, "");
   });

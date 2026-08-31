@@ -6,7 +6,7 @@ import {
   writeFileSync,
   unlinkSync,
 } from "node:fs";
-import { execSync, spawn } from "node:child_process";
+import { execSync, execFileSync, spawn } from "node:child_process";
 import { resolve } from "node:path";
 import yaml from "js-yaml";
 import type { OfficeConfig } from "./config.js";
@@ -18,6 +18,7 @@ import {
   setLabels,
   addComment,
   createPR,
+  createIssue,
   getPipelineLabel,
   type GitHubIssue,
 } from "./github.js";
@@ -53,6 +54,64 @@ export interface UsageBudget {
   shouldWindDown(): boolean;
   recordAgentTime(elapsedMs: number): void;
   reason(): string;
+}
+
+export interface ReviewFinding {
+  file: string;
+  line?: number;
+  severity: "blocking" | "suggestion" | "nit";
+  description: string;
+  recommendation: string;
+  disposition: "revise" | "follow-up" | "informational";
+}
+
+function isValidFinding(item: unknown): item is ReviewFinding {
+  if (typeof item !== "object" || item === null) return false;
+  const o = item as Record<string, unknown>;
+  return (
+    typeof o.file === "string" &&
+    typeof o.severity === "string" &&
+    ["blocking", "suggestion", "nit"].includes(o.severity as string) &&
+    typeof o.description === "string" &&
+    typeof o.recommendation === "string" &&
+    typeof o.disposition === "string" &&
+    ["revise", "follow-up", "informational"].includes(o.disposition as string)
+  );
+}
+
+export function parseReviewFindings(output: string): ReviewFinding[] {
+  const START = "<!-- FINDINGS_START -->";
+  const END = "<!-- FINDINGS_END -->";
+  const startIdx = output.indexOf(START);
+  const endIdx = output.indexOf(END);
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+    console.warn(
+      "  No structured findings block in reviewer output — treating as zero findings.",
+    );
+    return [];
+  }
+  const json = output.slice(startIdx + START.length, endIdx).trim();
+  try {
+    const parsed = JSON.parse(json) as unknown[];
+    if (!Array.isArray(parsed)) {
+      console.warn(
+        "  Findings block is not a JSON array — treating as zero findings.",
+      );
+      return [];
+    }
+    return parsed.filter((item, idx) => {
+      const valid = isValidFinding(item);
+      if (!valid) {
+        console.warn(`  Finding at index ${idx} is malformed — skipping.`);
+      }
+      return valid;
+    });
+  } catch {
+    console.warn(
+      "  Failed to parse findings block as JSON — treating as zero findings.",
+    );
+    return [];
+  }
 }
 
 export type PipelineSignal = "pause" | "cancel";
@@ -204,7 +263,7 @@ function commitStep(
     return;
   }
   execSync("git add -A", { cwd: worktreePath, stdio: "pipe" });
-  execSync(`git commit -m "step ${stepNumber}/${totalSteps}: ${role}"`, {
+  execFileSync("git", ["commit", "-m", `step ${stepNumber}/${totalSteps}: ${role}`], {
     cwd: worktreePath,
     stdio: "pipe",
   });
@@ -377,7 +436,6 @@ export function invokeAgent(
     const child = spawn("claude", args, {
       cwd: worktreePath,
       stdio: ["pipe", "pipe", "pipe"],
-      shell: true,
     });
 
     let stdout = "";
@@ -640,6 +698,280 @@ async function runAdversarialDebate(
   }
 }
 
+async function applyStopSignal(
+  config: OfficeConfig,
+  projectRoot: string,
+  worktreePath: string,
+  branch: string,
+  baseBranch: string,
+  issue: GitHubIssue,
+  stopPoint: string,
+  signal: PipelineSignal | null,
+  windDown: boolean,
+  budget: UsageBudget | undefined,
+): Promise<DispatchResult> {
+  const isPause = signal !== "cancel" && (signal === "pause" || windDown);
+  const commentReason = windDown
+    ? `Usage budget wind-down triggered: ${budget?.reason() ?? "unknown reason"}. Paused after ${stopPoint}.`
+    : signal === "pause"
+      ? `Paused by user request after ${stopPoint}.`
+      : `Cancelled by user request after ${stopPoint}.`;
+
+  pushBranchOnFailure(worktreePath, branch, baseBranch);
+
+  const newLabel = isPause ? "status:paused" : "status:blocked-unclassified";
+  await setLabels(issue.number, [newLabel], ["status:in-progress"]);
+  await addComment(issue.number, commentReason);
+  await notify(config, {
+    issueNumber: issue.number,
+    title: issue.title,
+    message: commentReason,
+    url: issue.html_url,
+  });
+
+  console.log(
+    `\n${isPause ? "Paused" : "Cancelled"} pipeline for #${issue.number} after ${stopPoint}.`,
+  );
+  return isPause ? "paused" : "cancelled";
+}
+
+export function buildRevisionContext(
+  issue: GitHubIssue,
+  findings: ReviewFinding[],
+): string {
+  const parts: string[] = [];
+  parts.push(`# Revision Task: #${issue.number} — ${issue.title}\n`);
+  parts.push(
+    "You are addressing specific reviewer findings on the current branch. Address ONLY the findings listed below. Do not make unrelated changes.\n",
+  );
+  parts.push("## Reviewer Findings to Address\n");
+  for (const f of findings) {
+    const location = f.line !== undefined ? `:${f.line}` : "";
+    parts.push(`### \`${f.file}${location}\``);
+    parts.push(`**Severity:** ${f.severity}`);
+    parts.push(`**Description:** ${f.description}`);
+    parts.push(`**Recommendation:** ${f.recommendation}`);
+    parts.push("");
+  }
+  return parts.join("\n");
+}
+
+export function buildConfirmationContext(
+  issue: GitHubIssue,
+  originalFindings: ReviewFinding[],
+): string {
+  const parts: string[] = [];
+  parts.push(`# Confirmation Review: #${issue.number} — ${issue.title}\n`);
+  parts.push(
+    "This is a scoped confirmation review. Check ONLY whether the following specific findings from the prior review have been addressed. Do not perform a full re-review.\n",
+  );
+  parts.push("## Original Findings to Verify\n");
+  for (const f of originalFindings) {
+    const location = f.line !== undefined ? `:${f.line}` : "";
+    parts.push(`### \`${f.file}${location}\``);
+    parts.push(`**Description:** ${f.description}`);
+    parts.push(`**Recommendation:** ${f.recommendation}`);
+    parts.push("");
+  }
+  parts.push("## Instructions\n");
+  parts.push(
+    "For each finding above, determine if it has been addressed. Output your analysis in prose, then output the structured findings block (between FINDINGS_START and FINDINGS_END markers) for any that remain unresolved. If all are addressed, output an empty findings array.",
+  );
+  return parts.join("\n");
+}
+
+export async function createFollowUpIssues(
+  issue: GitHubIssue,
+  findings: ReviewFinding[],
+  pipeline: Pipeline,
+): Promise<void> {
+  if (findings.length === 0) return;
+
+  const pipelineLabel = issue.labels.find((l) => l.startsWith("pipeline:"));
+  const labels = ["status:backlog", ...(pipelineLabel ? [pipelineLabel] : [])];
+
+  console.log(
+    `\n  Creating ${findings.length} follow-up issue(s) from review findings...`,
+  );
+  for (const f of findings) {
+    const shortDesc =
+      f.description.length > 60
+        ? f.description.slice(0, 57) + "..."
+        : f.description;
+    const title = `Follow-up from #${issue.number}: ${shortDesc}`;
+    const location = f.line !== undefined ? ` (line ${f.line})` : "";
+    const body = [
+      "## Context",
+      "",
+      `This issue was created automatically from reviewer findings on #${issue.number} (pipeline: ${pipeline.name}).`,
+      "",
+      `**File:** \`${f.file}\`${location}`,
+      `**Severity:** ${f.severity}`,
+      "",
+      "## Description",
+      "",
+      f.description,
+      "",
+      "## Recommendation",
+      "",
+      f.recommendation,
+    ].join("\n");
+
+    const created = await createIssue(title, body, labels);
+    console.log(
+      `  Created follow-up issue #${created.number}: ${created.title}`,
+    );
+  }
+}
+
+async function runPostReviewRevisions(
+  config: OfficeConfig,
+  projectRoot: string,
+  worktreePath: string,
+  issue: GitHubIssue,
+  pipeline: Pipeline,
+  reviewOutput: string,
+  branch: string,
+  baseBranch: string,
+  budget: UsageBudget | undefined,
+): Promise<DispatchResult | null> {
+  const allFindings = parseReviewFindings(reviewOutput);
+  const reviseFindings = allFindings.filter((f) => f.disposition === "revise");
+  const followUps: ReviewFinding[] = allFindings.filter(
+    (f) => f.disposition === "follow-up",
+  );
+  const maxRounds = config.dispatch.max_revision_rounds;
+
+  if (reviseFindings.length === 0 || maxRounds === 0) {
+    if (reviseFindings.length > 0) {
+      console.log(
+        `  ${reviseFindings.length} revise finding(s) noted but max_revision_rounds=0 — skipping revision.`,
+      );
+    }
+    await createFollowUpIssues(issue, followUps, pipeline);
+    return null;
+  }
+
+  console.log(
+    `\n  Reviewer found ${reviseFindings.length} revise finding(s). Running revision round.`,
+  );
+
+  {
+    const round = 1;
+    // Signal/budget check before implementer
+    const sig1 = readAndConsumeSignal(projectRoot, issue.number);
+    const wd1 = budget?.shouldWindDown() ?? false;
+    if (sig1 || wd1) {
+      return applyStopSignal(
+        config,
+        projectRoot,
+        worktreePath,
+        branch,
+        baseBranch,
+        issue,
+        `revision ${round} (pre-implementer)`,
+        sig1,
+        wd1,
+        budget,
+      );
+    }
+
+    console.log(`\n--- Revision round: implementer ---`);
+    const implStep: PipelineStep = {
+      role: "implementer",
+      description: "Address reviewer revision findings",
+    };
+    const revisionContext = buildRevisionContext(issue, reviseFindings);
+
+    const implStart = Date.now();
+    await invokeAgent(
+      config,
+      projectRoot,
+      worktreePath,
+      implStep,
+      revisionContext,
+    );
+    budget?.recordAgentTime(Date.now() - implStart);
+
+    const revStatus = execSync("git status --porcelain", {
+      cwd: worktreePath,
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    if (revStatus.trim().length > 0) {
+      execSync("git add -A", { cwd: worktreePath, stdio: "pipe" });
+      execFileSync("git", ["commit", "-m", `revision ${round}: implementer`], {
+        cwd: worktreePath,
+        stdio: "pipe",
+      });
+      console.log(`  Committed revision ${round}: implementer.`);
+    } else {
+      console.log(
+        `  No changes from revision ${round} implementer — skipping commit.`,
+      );
+    }
+
+    // Signal/budget check before confirmation review
+    const sig2 = readAndConsumeSignal(projectRoot, issue.number);
+    const wd2 = budget?.shouldWindDown() ?? false;
+    if (sig2 || wd2) {
+      return applyStopSignal(
+        config,
+        projectRoot,
+        worktreePath,
+        branch,
+        baseBranch,
+        issue,
+        `revision ${round} (post-implementer)`,
+        sig2,
+        wd2,
+        budget,
+      );
+    }
+
+    console.log(`\n--- Confirmation review (revision ${round}) ---`);
+    const confirmStep: PipelineStep = {
+      role: "reviewer",
+      description: "Confirm revision findings addressed",
+    };
+    const confirmContext = buildConfirmationContext(issue, reviseFindings);
+
+    const reviewStart = Date.now();
+    const confirmOutput = await invokeAgent(
+      config,
+      projectRoot,
+      worktreePath,
+      confirmStep,
+      confirmContext,
+      true,
+      true,
+    );
+    budget?.recordAgentTime(Date.now() - reviewStart);
+
+    if (confirmOutput) process.stdout.write(confirmOutput);
+
+    // All non-informational findings from confirmation → follow-up; stop revision
+    const confirmFindings = parseReviewFindings(confirmOutput);
+    const promoted = confirmFindings.filter(
+      (f) => f.disposition !== "informational",
+    );
+    if (promoted.length > 0) {
+      console.log(
+        `  Confirmation review: ${promoted.length} finding(s) promoted to follow-up.`,
+      );
+      followUps.push(
+        ...promoted.map((f) => ({ ...f, disposition: "follow-up" as const })),
+      );
+    } else {
+      console.log("  Confirmation review: all findings addressed.");
+    }
+
+  }
+
+  await createFollowUpIssues(issue, followUps, pipeline);
+  return null;
+}
+
 export async function dispatchNext(
   config: OfficeConfig,
   projectRoot: string,
@@ -790,12 +1122,40 @@ export async function dispatchIssue(
         i,
       );
 
+      const isReviewer = step.role === "reviewer";
       const stepStart = Date.now();
-      await invokeAgent(config, projectRoot, worktree.path, step, context);
+      const stepOutput = await invokeAgent(
+        config,
+        projectRoot,
+        worktree.path,
+        step,
+        context,
+        isReviewer,
+        isReviewer,
+      );
       const stepElapsed = Date.now() - stepStart;
       budget?.recordAgentTime(stepElapsed);
 
+      if (isReviewer && stepOutput) {
+        process.stdout.write(stepOutput);
+      }
+
       commitStep(worktree.path, i + 1, pipeline.steps.length, step.role);
+
+      if (isReviewer) {
+        const revisionResult = await runPostReviewRevisions(
+          config,
+          projectRoot,
+          worktree.path,
+          issue,
+          pipeline,
+          stepOutput,
+          branch,
+          baseBranch,
+          budget,
+        );
+        if (revisionResult !== null) return revisionResult;
+      }
 
       // Check for pause/cancel signal or usage wind-down before the next step.
       if (i < pipeline.steps.length - 1) {
@@ -803,33 +1163,19 @@ export async function dispatchIssue(
         const windDown = budget?.shouldWindDown() ?? false;
 
         if (signal === "cancel" || signal === "pause" || windDown) {
-          const isPause =
-            signal !== "cancel" && (signal === "pause" || windDown);
           const pausePoint = `step ${i + 1} of ${pipeline.steps.length} (${step.role})`;
-          const commentReason = windDown
-            ? `Usage budget wind-down triggered: ${budget!.reason()}. Paused after ${pausePoint}.`
-            : signal === "pause"
-              ? `Paused by user request after ${pausePoint}.`
-              : `Cancelled by user request after ${pausePoint}.`;
-
-          pushBranchOnFailure(worktree.path, branch, baseBranch);
-
-          const newLabel = isPause
-            ? "status:paused"
-            : "status:blocked-unclassified";
-          await setLabels(issue.number, [newLabel], ["status:in-progress"]);
-          await addComment(issue.number, commentReason);
-          await notify(config, {
-            issueNumber: issue.number,
-            title: issue.title,
-            message: commentReason,
-            url: issue.html_url,
-          });
-
-          console.log(
-            `\n${isPause ? "Paused" : "Cancelled"} pipeline for #${issue.number} after ${pausePoint}.`,
+          return applyStopSignal(
+            config,
+            projectRoot,
+            worktree.path,
+            branch,
+            baseBranch,
+            issue,
+            pausePoint,
+            signal,
+            windDown,
+            budget,
           );
-          return isPause ? "paused" : "cancelled";
         }
       }
     }

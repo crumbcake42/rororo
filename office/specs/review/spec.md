@@ -60,9 +60,42 @@ Agentic PR review focused on semantic correctness. Triggered manually via CLI or
 - WHEN it invokes the reviewer agent
 - THEN it requires `ANTHROPIC_API_KEY` as a repository secret and `GITHUB_TOKEN` (provided automatically by GitHub Actions)
 
+## Structured Review Output
+
+### Scenario: Reviewer outputs structured findings
+- GIVEN a reviewer agent is invoked (via `office review` or as a pipeline step)
+- WHEN the reviewer produces findings
+- THEN it outputs prose review AND a JSON findings block between `<!-- FINDINGS_START -->` and `<!-- FINDINGS_END -->` markers
+
+### Scenario: Finding structure
+- GIVEN the reviewer produces structured findings
+- WHEN each finding is serialized
+- THEN it includes: `file` (string, path), `line` (optional number), `severity` (`blocking` | `suggestion` | `nit`), `description` (string), `recommendation` (string), and `disposition` (`revise` | `follow-up` | `informational`)
+
+### Scenario: Disposition classification
+- GIVEN the reviewer produces a finding
+- WHEN it classifies the disposition
+- THEN `revise` is used for small, mechanically fixable items on the current branch (add a test, rename a variable, fix a typo), `follow-up` for larger items requiring separate planning (architectural changes, new features, cross-cutting refactors), and `informational` for observations requiring no action
+
+### Scenario: No actionable findings
+- GIVEN the reviewer finds no issues (full approval)
+- WHEN it outputs the findings block
+- THEN the JSON array is empty and the prose indicates approval
+
+### Scenario: Parsing structured findings
+- GIVEN reviewer output contains `<!-- FINDINGS_START -->` and `<!-- FINDINGS_END -->` markers
+- WHEN the dispatch system or review module parses the output
+- THEN it extracts the JSON array between the markers, validates required fields (`file`, `severity`, `description`, `recommendation`, `disposition`), and returns typed `ReviewFinding` objects
+
+### Scenario: Missing or malformed findings block
+- GIVEN reviewer output does not contain valid findings markers or the JSON is malformed
+- WHEN the parser attempts extraction
+- THEN it returns an empty findings array and logs a warning — the pipeline proceeds without revision
+
 ## Constraints
 - Manual trigger only — no automatic trigger on push or PR open (cost control).
-- Uses the existing `reviewer` agent role as-is. Semantic review focus is in the context prompt, not the role definition.
-- No worktree created — review operates on remote refs via `git diff`.
+- Semantic review focus is in the context prompt. The reviewer agent definition includes instructions for structured output format.
+- No worktree created for `office review` — it operates on remote refs via `git diff`.
 - `invokeAgent` is reused from `dispatch.ts` (exported), not duplicated.
 - Review context assembly is independent from dispatch context assembly — no shared extraction.
+- `parseReviewFindings` is exported from `review.ts` for use by both the review command and the dispatch pipeline loop.

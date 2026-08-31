@@ -42,6 +42,7 @@ mock.module("node:child_process", {
       }
       return "";
     },
+    execFileSync: () => "",
     spawn: () => {
       currentChild = makeMockChild();
       return currentChild;

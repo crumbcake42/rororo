@@ -49,6 +49,8 @@ Each pipeline step's changes are committed to the worktree branch after the agen
 
 Adversarial pipelines are excluded from incremental commits — they produce debate transcripts posted to the issue, not code changes, so the resume mechanism doesn't apply.
 
+**Agent process lifecycle.** `invokeAgent` manages two timeout phases. While the agent is producing output (stdout open), the idle timer (default 300s) resets on each data event — a genuine hang fires the timer and kills the process as a failure. Once stdout closes (output complete), both the idle timer and the max timer are cancelled and replaced by a short exit grace period (30s). If the process doesn't exit within the grace period, it's killed with **success** disposition — the agent's work product is complete, the lingering process is an external CLI behavior, not an agent failure.
+
 ## Pipeline Control
 Pipelines can be paused, cancelled, or prioritized at the step boundary (between agent invocations).
 

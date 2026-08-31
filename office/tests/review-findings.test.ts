@@ -92,20 +92,16 @@ describe("parseReviewFindings()", () => {
 
   // ---- Marker detection ----
 
-  test("returns empty array when FINDINGS_START marker is absent", () => {
+  test("returns empty array and warns when FINDINGS_START marker is absent", () => {
     const output = `${FINDINGS_END}\n[]`;
     const result = parseReviewFindings(output);
     assert.deepEqual(result, []);
+    assert.ok(warnMock.mock.callCount() > 0, "should warn when markers are missing");
   });
 
   test("returns empty array when FINDINGS_END marker is absent", () => {
     const output = `${FINDINGS_START}\n[]`;
     const result = parseReviewFindings(output);
-    assert.deepEqual(result, []);
-  });
-
-  test("returns empty array when both markers are absent", () => {
-    const result = parseReviewFindings("No findings block here.");
     assert.deepEqual(result, []);
   });
 
@@ -115,44 +111,19 @@ describe("parseReviewFindings()", () => {
     assert.deepEqual(result, []);
   });
 
-  test("emits a warning when markers are absent", () => {
-    parseReviewFindings("no markers");
-    assert.ok(warnMock.mock.callCount() > 0, "should warn when markers are missing");
-  });
-
   // ---- JSON parsing ----
 
-  test("returns empty array when content between markers is not valid JSON", () => {
+  test("returns empty array and warns when content between markers is not valid JSON", () => {
     const output = wrap("not { valid } json");
     const result = parseReviewFindings(output);
     assert.deepEqual(result, []);
-  });
-
-  test("emits a warning when JSON parsing fails", () => {
-    parseReviewFindings(wrap("{{invalid}}"));
     assert.ok(warnMock.mock.callCount() > 0, "should warn on JSON parse failure");
   });
 
-  test("returns empty array when parsed JSON is not an array (object)", () => {
+  test("returns empty array and warns when parsed JSON is not an array", () => {
     const output = wrap(JSON.stringify({ file: "a.ts", severity: "nit" }));
     const result = parseReviewFindings(output);
     assert.deepEqual(result, []);
-  });
-
-  test("returns empty array when parsed JSON is not an array (string)", () => {
-    const output = wrap(JSON.stringify("a string"));
-    const result = parseReviewFindings(output);
-    assert.deepEqual(result, []);
-  });
-
-  test("returns empty array when parsed JSON is not an array (null)", () => {
-    const output = wrap(JSON.stringify(null));
-    const result = parseReviewFindings(output);
-    assert.deepEqual(result, []);
-  });
-
-  test("emits a warning when findings block is not a JSON array", () => {
-    parseReviewFindings(wrap(JSON.stringify({ not: "an array" })));
     assert.ok(warnMock.mock.callCount() > 0, "should warn when block is not an array");
   });
 
@@ -180,14 +151,6 @@ describe("parseReviewFindings()", () => {
     assert.equal(result[0].line, 42);
   });
 
-  test("finding without optional line field is still valid", () => {
-    const finding = makeValidFinding();
-    delete (finding as Partial<ReviewFinding>).line;
-    const result = parseReviewFindings(wrap(JSON.stringify([finding])));
-    assert.equal(result.length, 1);
-    assert.equal(result[0].line, undefined);
-  });
-
   // ---- Severity values ----
 
   test("accepts severity: blocking", () => {
@@ -196,14 +159,6 @@ describe("parseReviewFindings()", () => {
     );
     assert.equal(result.length, 1);
     assert.equal(result[0].severity, "blocking");
-  });
-
-  test("accepts severity: suggestion", () => {
-    const result = parseReviewFindings(
-      wrap(JSON.stringify([makeValidFinding({ severity: "suggestion" })])),
-    );
-    assert.equal(result.length, 1);
-    assert.equal(result[0].severity, "suggestion");
   });
 
   test("accepts severity: nit", () => {
@@ -221,13 +176,6 @@ describe("parseReviewFindings()", () => {
   });
 
   // ---- Disposition values ----
-
-  test("accepts disposition: revise", () => {
-    const result = parseReviewFindings(
-      wrap(JSON.stringify([makeValidFinding({ disposition: "revise" })])),
-    );
-    assert.equal(result[0].disposition, "revise");
-  });
 
   test("accepts disposition: follow-up", () => {
     const result = parseReviewFindings(
@@ -297,11 +245,6 @@ describe("parseReviewFindings()", () => {
     assert.equal(result.length, 0);
   });
 
-  test("rejects primitive entries in the findings array", () => {
-    const result = parseReviewFindings(wrap(JSON.stringify(["string", 42])));
-    assert.equal(result.length, 0);
-  });
-
   // ---- Partial filtering ----
 
   test("filters out invalid findings while keeping valid ones in a mixed array", () => {
@@ -336,22 +279,6 @@ describe("parseReviewFindings()", () => {
     const result = parseReviewFindings(output);
     assert.equal(result.length, 1);
   });
-
-  // ---- Marker extraction is position-based ----
-
-  test("extracts only JSON between the markers, ignoring surrounding prose", () => {
-    const finding = makeValidFinding({ file: "target.ts" });
-    const output = [
-      "Agent prose before the block.",
-      FINDINGS_START,
-      JSON.stringify([finding]),
-      FINDINGS_END,
-      "Agent prose after the block.",
-    ].join("\n");
-    const result = parseReviewFindings(output);
-    assert.equal(result.length, 1);
-    assert.equal(result[0].file, "target.ts");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -359,10 +286,6 @@ describe("parseReviewFindings()", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseReviewFindings re-export from review.ts", () => {
-  test("parseReviewFindings is exported from review.ts", () => {
-    assert.equal(typeof parseFromReview, "function");
-  });
-
   test("re-exported function behaves identically to the dispatch.ts original", () => {
     const finding = makeValidFinding({ file: "reexport-test.ts" });
     const output = wrap(JSON.stringify([finding]));

@@ -1,6 +1,7 @@
 import { test, describe, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import type { ReviewFinding, Pipeline } from "../src/dispatch.js";
+import type { GitHubIssue } from "../src/github.js";
 
 // ---------------------------------------------------------------------------
 // Module-level mock setup — must precede dynamic imports
@@ -472,6 +473,18 @@ describe("createFollowUpIssues()", () => {
     assert.match(body, /Must fix this/);
     assert.match(body, /Do the thing/);
   });
+
+  test("applies only status:backlog when parent issue has no pipeline label", async () => {
+    const noPipelineIssue: GitHubIssue = {
+      ...testIssue,
+      labels: ["status:in-progress"],
+    };
+    const findings: ReviewFinding[] = [
+      makeValidFinding({ disposition: "follow-up" }),
+    ];
+    await createFollowUpIssues(noPipelineIssue, findings, testPipeline);
+    assert.deepEqual(createIssueCalls[0].labels, ["status:backlog"]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -499,6 +512,29 @@ describe("buildRevisionContext()", () => {
     assert.match(ctx, /Critical bug here/);
     assert.match(ctx, /Fix the bug/);
   });
+
+  test("includes :line suffix when finding has a line number", () => {
+    const findings: ReviewFinding[] = [
+      makeValidFinding({ file: "src/foo.ts", line: 42 }),
+    ];
+    const ctx = buildRevisionContext(testIssue, findings);
+    assert.match(ctx, /src\/foo\.ts:42/);
+  });
+
+  test("omits :line suffix when finding has no line number", () => {
+    const findings: ReviewFinding[] = [
+      makeValidFinding({ file: "src/bar.ts" }),
+    ];
+    const ctx = buildRevisionContext(testIssue, findings);
+    assert.match(ctx, /`src\/bar\.ts`/);
+    assert.doesNotMatch(ctx, /src\/bar\.ts:/);
+  });
+
+  test("includes directive to address only listed findings", () => {
+    const findings: ReviewFinding[] = [makeValidFinding()];
+    const ctx = buildRevisionContext(testIssue, findings);
+    assert.match(ctx, /address ONLY the findings/i);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -517,5 +553,28 @@ describe("buildConfirmationContext()", () => {
     const findings: ReviewFinding[] = [makeValidFinding()];
     const ctx = buildConfirmationContext(testIssue, findings);
     assert.match(ctx, /confirmation/i);
+  });
+
+  test("includes do-not-re-review directive", () => {
+    const findings: ReviewFinding[] = [makeValidFinding()];
+    const ctx = buildConfirmationContext(testIssue, findings);
+    assert.match(ctx, /Do not perform a full re-review/);
+  });
+
+  test("includes :line suffix when finding has a line number", () => {
+    const findings: ReviewFinding[] = [
+      makeValidFinding({ file: "src/baz.ts", line: 99 }),
+    ];
+    const ctx = buildConfirmationContext(testIssue, findings);
+    assert.match(ctx, /src\/baz\.ts:99/);
+  });
+
+  test("omits :line suffix when finding has no line number", () => {
+    const findings: ReviewFinding[] = [
+      makeValidFinding({ file: "src/qux.ts" }),
+    ];
+    const ctx = buildConfirmationContext(testIssue, findings);
+    assert.match(ctx, /`src\/qux\.ts`/);
+    assert.doesNotMatch(ctx, /src\/qux\.ts:/);
   });
 });

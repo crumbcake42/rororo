@@ -18,7 +18,7 @@ Reference: `docs/DOCUMENTATION-PROPOSAL.md`
 - This is the foundation every other doc references — get the mental model right first
 - Target ~200 lines of prose + diagrams
 
-**Done**: [ ]
+**Done**: [x]
 
 ---
 

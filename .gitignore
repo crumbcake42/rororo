@@ -7,3 +7,4 @@ office/node_modules/
 .office-daemon-state.json
 .office-signal-*.json
 *.tsbuildinfo
+.research/
